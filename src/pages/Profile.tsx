@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,57 +7,30 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { getGoals, getAchievements, getSettings, saveSettings, getHabits, getJournalEntries, Goal, Achievement, Settings, Habit, JournalEntry } from '@/lib/storage';
+import { getGoals, getAchievements, getSettings, saveSettings, getHabits, getJournalEntries } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
-import { Target, MessageCircle, Sparkles, Moon, User, Settings as SettingsIcon, Trophy, History, Bell, Shield, HelpCircle, LogOut, ChevronRight, Loader2 } from 'lucide-react';
+import { Target, MessageCircle, Sparkles, Moon, User, Settings, Trophy, History, Bell, Shield, HelpCircle, LogOut, ChevronRight } from 'lucide-react';
 
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [journals, setJournals] = useState<JournalEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [settings, setSettings] = useState(getSettings());
+  const goals = getGoals();
+  const achievements = getAchievements();
+  const habits = getHabits();
+  const journals = getJournalEntries();
 
-  const loadData = useCallback(async () => {
-    try {
-      const [goalsData, achievementsData, habitsData, journalsData, settingsData] = await Promise.all([
-        getGoals(),
-        getAchievements(),
-        getHabits(),
-        getJournalEntries(),
-        getSettings()
-      ]);
-      setGoals(goalsData);
-      setAchievements(achievementsData);
-      setHabits(habitsData);
-      setJournals(journalsData);
-      setSettings(settingsData);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = () => {
+    logout();
     toast({ title: 'Logged out', description: 'See you soon!' });
     navigate('/');
   };
 
-  const handleSettingChange = async (key: string, value: any) => {
-    if (!settings) return;
+  const handleSettingChange = (key: string, value: any) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
-    await saveSettings(newSettings);
+    saveSettings(newSettings);
   };
 
   const menuItems = [
@@ -69,21 +42,13 @@ const Profile = () => {
     { id: 'help', icon: HelpCircle, label: 'Help & Support' },
   ];
 
-  if (isLoading || !settings) {
-    return (
-      <div className="min-h-screen gradient-calm flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen gradient-calm pb-24">
       <header className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Profile</h1>
           <Dialog open={activeDialog === 'settings'} onOpenChange={(o) => setActiveDialog(o ? 'settings' : null)}>
-            <DialogTrigger asChild><Button variant="ghost" size="icon"><SettingsIcon className="h-5 w-5" /></Button></DialogTrigger>
+            <DialogTrigger asChild><Button variant="ghost" size="icon"><Settings className="h-5 w-5" /></Button></DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Settings</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">

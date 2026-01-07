@@ -50,7 +50,6 @@ const Onboarding = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [goals, setGoals] = useState<{ category: string; title: string; description: string }[]>([]);
   const [selectedHabits, setSelectedHabits] = useState<Set<string>>(new Set());
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -82,49 +81,38 @@ const Onboarding = () => {
     });
   };
 
-  const handleComplete = async () => {
-    setIsSubmitting(true);
-    try {
-      // Save goals
-      for (const goal of goals) {
-        if (goal.title) {
-          await addGoal({
-            title: goal.title,
-            description: goal.description,
-            category: goal.category as any,
-          });
-        }
+  const handleComplete = () => {
+    // Save goals
+    goals.forEach((goal) => {
+      if (goal.title) {
+        addGoal({
+          title: goal.title,
+          description: goal.description,
+          category: goal.category as any,
+        });
       }
+    });
 
-      // Save habits
-      for (const habitKey of selectedHabits) {
-        const [category, index] = habitKey.split('-');
-        const habit = suggestedHabits[category as keyof typeof suggestedHabits]?.[parseInt(index)];
-        if (habit) {
-          await addHabit({
-            title: habit.title,
-            description: habit.description,
-            category: category === 'health' ? 'health' : category === 'career' ? 'productivity' : category === 'wellness' ? 'mindfulness' : category === 'relationships' ? 'social' : 'learning',
-            frequency: 'daily',
-          });
-        }
+    // Save habits
+    selectedHabits.forEach((habitKey) => {
+      const [category, index] = habitKey.split('-');
+      const habit = suggestedHabits[category as keyof typeof suggestedHabits]?.[parseInt(index)];
+      if (habit) {
+        addHabit({
+          title: habit.title,
+          description: habit.description,
+          category: category === 'health' ? 'health' : category === 'career' ? 'productivity' : category === 'wellness' ? 'mindfulness' : category === 'relationships' ? 'social' : 'learning',
+          frequency: 'daily',
+        });
       }
+    });
 
-      await setOnboardingComplete();
-      toast({
-        title: "You're all set!",
-        description: 'Your personalized wellness journey begins now.',
-      });
-      navigate('/home');
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save your preferences. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    setOnboardingComplete();
+    toast({
+      title: "You're all set!",
+      description: 'Your personalized wellness journey begins now.',
+    });
+    navigate('/home');
   };
 
   return (
@@ -303,8 +291,8 @@ const Onboarding = () => {
                 <Button variant="outline" size="lg" className="flex-1" onClick={() => setStep(2)}>
                   Back
                 </Button>
-                <Button variant="hero" size="lg" className="flex-1" onClick={handleComplete} disabled={isSubmitting}>
-                  {isSubmitting ? 'Setting up...' : 'Start My Journey'}
+                <Button variant="hero" size="lg" className="flex-1" onClick={handleComplete}>
+                  Start My Journey
                 </Button>
               </div>
             </CardContent>

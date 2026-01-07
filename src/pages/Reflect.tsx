@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { addReflection, addJournalEntry, getReflections, getJournalEntries, getTodayString, getHabits, getTasks, getChatHistory, JournalEntry, Reflection } from '@/lib/storage';
+import { addReflection, addJournalEntry, getReflections, getJournalEntries, getTodayString, getHabits, getTasks, getChatHistory } from '@/lib/storage';
 import { generateJournalEntry, generateReflectionPrompts } from '@/lib/gemini';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Target, MessageCircle, Sparkles, Moon, User, BookOpen, Loader2 } from 'lucide-react';
+import { Plus, Sparkles, Target, MessageCircle, Moon, User, BookOpen, Loader2 } from 'lucide-react';
 
 const moods = [
   { value: 'great', emoji: '😄', label: 'Great' },
@@ -24,29 +24,15 @@ const Reflect = () => {
   const [challenges, setChallenges] = useState('');
   const [lessons, setLessons] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isDataLoading, setIsDataLoading] = useState(true);
   const [prompts, setPrompts] = useState<string[]>([]);
-  const [journals, setJournals] = useState<JournalEntry[]>([]);
   
+  const reflections = getReflections();
+  const journals = getJournalEntries();
   const today = getTodayString();
 
-  const loadData = useCallback(async () => {
-    try {
-      const journalsData = await getJournalEntries();
-      setJournals(journalsData);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setIsDataLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
   const loadPrompts = async () => {
-    const [tasks, habits] = await Promise.all([getTasks(today), getHabits()]);
+    const tasks = getTasks(today);
+    const habits = getHabits();
     const generated = await generateReflectionPrompts(mood, tasks.filter(t => t.completed).length, habits.map(h => h.title));
     setPrompts(generated);
   };
@@ -54,7 +40,7 @@ const Reflect = () => {
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      const reflection = await addReflection({
+      const reflection = addReflection({
         date: today,
         wins: wins.split('\n').filter(Boolean),
         challenges: challenges.split('\n').filter(Boolean),
@@ -64,7 +50,8 @@ const Reflect = () => {
         energyLevel: 5,
       });
 
-      const [tasks, chatHistory] = await Promise.all([getTasks(today), getChatHistory()]);
+      const tasks = getTasks(today);
+      const chatHistory = getChatHistory();
       const journalContent = await generateJournalEntry(
         chatHistory.slice(-10).map(m => ({ role: m.role, content: m.content })),
         { wins: reflection.wins, challenges: reflection.challenges, mood, lessonsLearned: lessons },
@@ -72,7 +59,7 @@ const Reflect = () => {
         tasks.length
       );
 
-      await addJournalEntry({
+      addJournalEntry({
         date: today,
         content: journalContent,
         mood,
@@ -81,7 +68,6 @@ const Reflect = () => {
         reflectionSummary: lessons,
       });
 
-      await loadData();
       toast({ title: 'Reflection saved!', description: 'Your journal entry has been created.' });
       setIsOpen(false);
       setWins(''); setChallenges(''); setLessons('');
@@ -90,14 +76,6 @@ const Reflect = () => {
     }
     setIsLoading(false);
   };
-
-  if (isDataLoading) {
-    return (
-      <div className="min-h-screen gradient-calm flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen gradient-calm pb-24">

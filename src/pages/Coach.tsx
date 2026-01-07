@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,21 +11,12 @@ import { Send, Mic, MicOff, Target, MessageCircle, Sparkles, Moon, User, Loader2
 
 const Coach = () => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(getChatHistory());
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-
-  const loadChatHistory = useCallback(async () => {
-    const history = await getChatHistory();
-    setMessages(history);
-  }, []);
-
-  useEffect(() => {
-    loadChatHistory();
-  }, [loadChatHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,13 +56,14 @@ const Coach = () => {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMessage = await addChatMessage({ role: 'user', content: input.trim() });
+    const userMessage = addChatMessage({ role: 'user', content: input.trim() });
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
-      const [goals, habits] = await Promise.all([getGoals(), getHabits()]);
+      const goals = getGoals();
+      const habits = getHabits();
       const response = await sendMessage(
         userMessage.content,
         messages.map(m => ({ role: m.role, content: m.content })),
@@ -81,7 +73,7 @@ const Coach = () => {
         }
       );
       
-      const assistantMessage = await addChatMessage({ role: 'assistant', content: response });
+      const assistantMessage = addChatMessage({ role: 'assistant', content: response });
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to get response. Please try again.', variant: 'destructive' });

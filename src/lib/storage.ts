@@ -1,7 +1,17 @@
-// API Configuration - Point this to your Flask backend running in VS Code
-const API_BASE_URL = 'http://localhost:5000/api';
+// LocalStorage keys
+const KEYS = {
+  USER: 'justly_user',
+  GOALS: 'justly_goals',
+  HABITS: 'justly_habits',
+  TASKS: 'justly_tasks',
+  JOURNAL: 'justly_journal',
+  REFLECTIONS: 'justly_reflections',
+  CHAT_HISTORY: 'justly_chat_history',
+  ACHIEVEMENTS: 'justly_achievements',
+  SETTINGS: 'justly_settings',
+  ONBOARDING_COMPLETE: 'justly_onboarding_complete',
+};
 
-// Interfaces
 export interface User {
   id: string;
   name: string;
@@ -97,249 +107,301 @@ export interface Settings {
   };
 }
 
-// Helper for API calls
-async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
-  }
-  return response.json();
-}
+// Helper functions
+const generateId = () => Math.random().toString(36).substring(2, 15);
 
 const getToday = () => new Date().toISOString().split('T')[0];
 
-// ========== USER ==========
-export async function getUser(): Promise<User | null> {
-  try {
-    return await apiCall<User>('/user');
-  } catch {
-    return null;
+// User
+export const getUser = (): User | null => {
+  const data = localStorage.getItem(KEYS.USER);
+  return data ? JSON.parse(data) : null;
+};
+
+export const setUser = (user: User) => {
+  localStorage.setItem(KEYS.USER, JSON.stringify(user));
+};
+
+export const createUser = (name: string, email: string, password: string): User => {
+  const user: User = {
+    id: generateId(),
+    name,
+    email,
+    createdAt: new Date().toISOString(),
+  };
+  // Store password hash (in real app, this would be server-side)
+  localStorage.setItem(`justly_auth_${email}`, btoa(password));
+  setUser(user);
+  return user;
+};
+
+export const loginUser = (email: string, password: string): User | null => {
+  const storedPassword = localStorage.getItem(`justly_auth_${email}`);
+  if (storedPassword && atob(storedPassword) === password) {
+    const user = getUser();
+    if (user && user.email === email) {
+      return user;
+    }
+    // Check if user exists in any stored user
+    const allUsers = getAllUsers();
+    const matchedUser = allUsers.find(u => u.email === email);
+    if (matchedUser) {
+      setUser(matchedUser);
+      return matchedUser;
+    }
   }
-}
+  return null;
+};
 
-export async function setUser(user: User): Promise<void> {
-  await apiCall('/user', {
-    method: 'PUT',
-    body: JSON.stringify(user),
-  });
-}
-
-export async function createUser(name: string, email: string, password: string): Promise<User> {
-  return await apiCall<User>('/user', {
-    method: 'POST',
-    body: JSON.stringify({ name, email, password }),
-  });
-}
-
-export async function loginUser(email: string, password: string): Promise<User | null> {
-  try {
-    return await apiCall<User>('/user/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-  } catch {
-    return null;
+const getAllUsers = (): User[] => {
+  const users: User[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('justly_user_')) {
+      const data = localStorage.getItem(key);
+      if (data) users.push(JSON.parse(data));
+    }
   }
-}
+  const currentUser = getUser();
+  if (currentUser) users.push(currentUser);
+  return users;
+};
 
-export async function logoutUser(): Promise<void> {
-  await apiCall('/user/logout', { method: 'POST' });
-}
+export const logoutUser = () => {
+  localStorage.removeItem(KEYS.USER);
+  localStorage.removeItem(KEYS.ONBOARDING_COMPLETE);
+};
 
-// ========== GOALS ==========
-export async function getGoals(): Promise<Goal[]> {
-  try {
-    return await apiCall<Goal[]>('/goals');
-  } catch {
-    return [];
+// Goals
+export const getGoals = (): Goal[] => {
+  const data = localStorage.getItem(KEYS.GOALS);
+  return data ? JSON.parse(data) : [];
+};
+
+export const saveGoals = (goals: Goal[]) => {
+  localStorage.setItem(KEYS.GOALS, JSON.stringify(goals));
+};
+
+export const addGoal = (goal: Omit<Goal, 'id' | 'createdAt' | 'progress'>): Goal => {
+  const newGoal: Goal = {
+    ...goal,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    progress: 0,
+  };
+  const goals = getGoals();
+  goals.push(newGoal);
+  saveGoals(goals);
+  return newGoal;
+};
+
+export const updateGoal = (id: string, updates: Partial<Goal>) => {
+  const goals = getGoals();
+  const index = goals.findIndex(g => g.id === id);
+  if (index !== -1) {
+    goals[index] = { ...goals[index], ...updates };
+    saveGoals(goals);
   }
-}
+};
 
-export async function saveGoals(goals: Goal[]): Promise<void> {
-  await apiCall('/goals', {
-    method: 'PUT',
-    body: JSON.stringify(goals),
-  });
-}
+export const deleteGoal = (id: string) => {
+  const goals = getGoals().filter(g => g.id !== id);
+  saveGoals(goals);
+};
 
-export async function addGoal(goal: Omit<Goal, 'id' | 'createdAt' | 'progress'>): Promise<Goal> {
-  return await apiCall<Goal>('/goals', {
-    method: 'POST',
-    body: JSON.stringify(goal),
-  });
-}
+// Habits
+export const getHabits = (): Habit[] => {
+  const data = localStorage.getItem(KEYS.HABITS);
+  return data ? JSON.parse(data) : [];
+};
 
-export async function updateGoal(id: string, updates: Partial<Goal>): Promise<void> {
-  await apiCall(`/goals/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates),
-  });
-}
+export const saveHabits = (habits: Habit[]) => {
+  localStorage.setItem(KEYS.HABITS, JSON.stringify(habits));
+};
 
-export async function deleteGoal(id: string): Promise<void> {
-  await apiCall(`/goals/${id}`, { method: 'DELETE' });
-}
+export const addHabit = (habit: Omit<Habit, 'id' | 'createdAt' | 'completedDates' | 'streak'>): Habit => {
+  const newHabit: Habit = {
+    ...habit,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    completedDates: [],
+    streak: 0,
+  };
+  const habits = getHabits();
+  habits.push(newHabit);
+  saveHabits(habits);
+  return newHabit;
+};
 
-// ========== HABITS ==========
-export async function getHabits(): Promise<Habit[]> {
-  try {
-    return await apiCall<Habit[]>('/habits');
-  } catch {
-    return [];
+export const completeHabit = (id: string) => {
+  const habits = getHabits();
+  const habit = habits.find(h => h.id === id);
+  if (habit) {
+    const today = getToday();
+    if (!habit.completedDates.includes(today)) {
+      habit.completedDates.push(today);
+      // Calculate streak
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      if (habit.completedDates.includes(yesterdayStr)) {
+        habit.streak += 1;
+      } else {
+        habit.streak = 1;
+      }
+      saveHabits(habits);
+    }
   }
-}
+};
 
-export async function saveHabits(habits: Habit[]): Promise<void> {
-  await apiCall('/habits', {
-    method: 'PUT',
-    body: JSON.stringify(habits),
-  });
-}
-
-export async function addHabit(habit: Omit<Habit, 'id' | 'createdAt' | 'completedDates' | 'streak'>): Promise<Habit> {
-  return await apiCall<Habit>('/habits', {
-    method: 'POST',
-    body: JSON.stringify(habit),
-  });
-}
-
-export async function completeHabit(id: string): Promise<void> {
-  await apiCall(`/habits/${id}/complete`, { method: 'POST' });
-}
-
-export async function uncompleteHabit(id: string): Promise<void> {
-  await apiCall(`/habits/${id}/uncomplete`, { method: 'POST' });
-}
-
-export async function deleteHabit(id: string): Promise<void> {
-  await apiCall(`/habits/${id}`, { method: 'DELETE' });
-}
-
-// ========== TASKS ==========
-export async function getTasks(date?: string): Promise<Task[]> {
-  try {
-    const endpoint = date ? `/tasks?date=${date}` : '/tasks';
-    return await apiCall<Task[]>(endpoint);
-  } catch {
-    return [];
+export const uncompleteHabit = (id: string) => {
+  const habits = getHabits();
+  const habit = habits.find(h => h.id === id);
+  if (habit) {
+    const today = getToday();
+    habit.completedDates = habit.completedDates.filter(d => d !== today);
+    saveHabits(habits);
   }
-}
+};
 
-export async function saveTasks(tasks: Task[]): Promise<void> {
-  await apiCall('/tasks', {
-    method: 'PUT',
-    body: JSON.stringify(tasks),
-  });
-}
+export const deleteHabit = (id: string) => {
+  const habits = getHabits().filter(h => h.id !== id);
+  saveHabits(habits);
+};
 
-export async function addTask(task: Omit<Task, 'id' | 'createdAt'>): Promise<Task> {
-  return await apiCall<Task>('/tasks', {
-    method: 'POST',
-    body: JSON.stringify(task),
-  });
-}
-
-export async function toggleTask(id: string): Promise<void> {
-  await apiCall(`/tasks/${id}/toggle`, { method: 'POST' });
-}
-
-export async function deleteTask(id: string): Promise<void> {
-  await apiCall(`/tasks/${id}`, { method: 'DELETE' });
-}
-
-// ========== JOURNAL ==========
-export async function getJournalEntries(): Promise<JournalEntry[]> {
-  try {
-    return await apiCall<JournalEntry[]>('/journal');
-  } catch {
-    return [];
+// Tasks
+export const getTasks = (date?: string): Task[] => {
+  const data = localStorage.getItem(KEYS.TASKS);
+  const tasks: Task[] = data ? JSON.parse(data) : [];
+  if (date) {
+    return tasks.filter(t => t.date === date);
   }
-}
+  return tasks;
+};
 
-export async function saveJournalEntries(entries: JournalEntry[]): Promise<void> {
-  await apiCall('/journal', {
-    method: 'PUT',
-    body: JSON.stringify(entries),
-  });
-}
+export const saveTasks = (tasks: Task[]) => {
+  localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
+};
 
-export async function addJournalEntry(entry: Omit<JournalEntry, 'id' | 'createdAt'>): Promise<JournalEntry> {
-  return await apiCall<JournalEntry>('/journal', {
-    method: 'POST',
-    body: JSON.stringify(entry),
-  });
-}
+export const addTask = (task: Omit<Task, 'id' | 'createdAt'>): Task => {
+  const newTask: Task = {
+    ...task,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  const tasks = getTasks();
+  tasks.push(newTask);
+  saveTasks(tasks);
+  return newTask;
+};
 
-export async function getJournalByDate(date: string): Promise<JournalEntry | undefined> {
-  try {
-    return await apiCall<JournalEntry>(`/journal/date/${date}`);
-  } catch {
-    return undefined;
+export const toggleTask = (id: string) => {
+  const tasks = getTasks();
+  const task = tasks.find(t => t.id === id);
+  if (task) {
+    task.completed = !task.completed;
+    saveTasks(tasks);
   }
-}
+};
 
-// ========== REFLECTIONS ==========
-export async function getReflections(): Promise<Reflection[]> {
-  try {
-    return await apiCall<Reflection[]>('/reflections');
-  } catch {
-    return [];
+export const deleteTask = (id: string) => {
+  const tasks = getTasks().filter(t => t.id !== id);
+  saveTasks(tasks);
+};
+
+// Journal
+export const getJournalEntries = (): JournalEntry[] => {
+  const data = localStorage.getItem(KEYS.JOURNAL);
+  return data ? JSON.parse(data) : [];
+};
+
+export const saveJournalEntries = (entries: JournalEntry[]) => {
+  localStorage.setItem(KEYS.JOURNAL, JSON.stringify(entries));
+};
+
+export const addJournalEntry = (entry: Omit<JournalEntry, 'id' | 'createdAt'>): JournalEntry => {
+  const newEntry: JournalEntry = {
+    ...entry,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  const entries = getJournalEntries();
+  entries.unshift(newEntry);
+  saveJournalEntries(entries);
+  return newEntry;
+};
+
+export const getJournalByDate = (date: string): JournalEntry | undefined => {
+  return getJournalEntries().find(e => e.date === date);
+};
+
+// Reflections
+export const getReflections = (): Reflection[] => {
+  const data = localStorage.getItem(KEYS.REFLECTIONS);
+  return data ? JSON.parse(data) : [];
+};
+
+export const saveReflections = (reflections: Reflection[]) => {
+  localStorage.setItem(KEYS.REFLECTIONS, JSON.stringify(reflections));
+};
+
+export const addReflection = (reflection: Omit<Reflection, 'id' | 'createdAt'>): Reflection => {
+  const newReflection: Reflection = {
+    ...reflection,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  const reflections = getReflections();
+  reflections.unshift(newReflection);
+  saveReflections(reflections);
+  return newReflection;
+};
+
+export const getReflectionByDate = (date: string): Reflection | undefined => {
+  return getReflections().find(r => r.date === date);
+};
+
+// Chat History
+export const getChatHistory = (): ChatMessage[] => {
+  const data = localStorage.getItem(KEYS.CHAT_HISTORY);
+  return data ? JSON.parse(data) : [];
+};
+
+export const saveChatHistory = (messages: ChatMessage[]) => {
+  localStorage.setItem(KEYS.CHAT_HISTORY, JSON.stringify(messages));
+};
+
+export const addChatMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>): ChatMessage => {
+  const newMessage: ChatMessage = {
+    ...message,
+    id: generateId(),
+    timestamp: new Date().toISOString(),
+  };
+  const history = getChatHistory();
+  history.push(newMessage);
+  saveChatHistory(history);
+  return newMessage;
+};
+
+export const clearChatHistory = () => {
+  localStorage.removeItem(KEYS.CHAT_HISTORY);
+};
+
+// Achievements
+export const getAchievements = (): Achievement[] => {
+  const data = localStorage.getItem(KEYS.ACHIEVEMENTS);
+  return data ? JSON.parse(data) : defaultAchievements;
+};
+
+export const unlockAchievement = (id: string) => {
+  const achievements = getAchievements();
+  const achievement = achievements.find(a => a.id === id);
+  if (achievement && !achievement.unlockedAt) {
+    achievement.unlockedAt = new Date().toISOString();
+    localStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements));
   }
-}
+};
 
-export async function saveReflections(reflections: Reflection[]): Promise<void> {
-  await apiCall('/reflections', {
-    method: 'PUT',
-    body: JSON.stringify(reflections),
-  });
-}
-
-export async function addReflection(reflection: Omit<Reflection, 'id' | 'createdAt'>): Promise<Reflection> {
-  return await apiCall<Reflection>('/reflections', {
-    method: 'POST',
-    body: JSON.stringify(reflection),
-  });
-}
-
-export async function getReflectionByDate(date: string): Promise<Reflection | undefined> {
-  try {
-    return await apiCall<Reflection>(`/reflections/date/${date}`);
-  } catch {
-    return undefined;
-  }
-}
-
-// ========== CHAT HISTORY ==========
-export async function getChatHistory(): Promise<ChatMessage[]> {
-  try {
-    return await apiCall<ChatMessage[]>('/chat');
-  } catch {
-    return [];
-  }
-}
-
-export async function saveChatHistory(messages: ChatMessage[]): Promise<void> {
-  await apiCall('/chat', {
-    method: 'PUT',
-    body: JSON.stringify(messages),
-  });
-}
-
-export async function addChatMessage(message: Omit<ChatMessage, 'id' | 'timestamp'>): Promise<ChatMessage> {
-  return await apiCall<ChatMessage>('/chat', {
-    method: 'POST',
-    body: JSON.stringify(message),
-  });
-}
-
-export async function clearChatHistory(): Promise<void> {
-  await apiCall('/chat', { method: 'DELETE' });
-}
-
-// ========== ACHIEVEMENTS ==========
 const defaultAchievements: Achievement[] = [
   { id: 'first_habit', title: 'First Step', description: 'Complete your first habit', icon: '🌱', category: 'milestone' },
   { id: 'streak_7', title: 'Week Warrior', description: 'Maintain a 7-day streak', icon: '🔥', category: 'streak' },
@@ -351,19 +413,16 @@ const defaultAchievements: Achievement[] = [
   { id: 'chat_coach_10', title: 'Open Mind', description: 'Have 10 coaching sessions', icon: '💬', category: 'milestone' },
 ];
 
-export async function getAchievements(): Promise<Achievement[]> {
-  try {
-    return await apiCall<Achievement[]>('/achievements');
-  } catch {
-    return defaultAchievements;
-  }
-}
+// Settings
+export const getSettings = (): Settings => {
+  const data = localStorage.getItem(KEYS.SETTINGS);
+  return data ? JSON.parse(data) : defaultSettings;
+};
 
-export async function unlockAchievement(id: string): Promise<void> {
-  await apiCall(`/achievements/${id}/unlock`, { method: 'POST' });
-}
+export const saveSettings = (settings: Settings) => {
+  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+};
 
-// ========== SETTINGS ==========
 const defaultSettings: Settings = {
   notifications: true,
   morningPrepTime: '07:00',
@@ -375,34 +434,14 @@ const defaultSettings: Settings = {
   },
 };
 
-export async function getSettings(): Promise<Settings> {
-  try {
-    return await apiCall<Settings>('/settings');
-  } catch {
-    return defaultSettings;
-  }
-}
+// Onboarding
+export const isOnboardingComplete = (): boolean => {
+  return localStorage.getItem(KEYS.ONBOARDING_COMPLETE) === 'true';
+};
 
-export async function saveSettings(settings: Settings): Promise<void> {
-  await apiCall('/settings', {
-    method: 'PUT',
-    body: JSON.stringify(settings),
-  });
-}
-
-// ========== ONBOARDING ==========
-export async function isOnboardingComplete(): Promise<boolean> {
-  try {
-    const result = await apiCall<{ complete: boolean }>('/onboarding');
-    return result.complete;
-  } catch {
-    return false;
-  }
-}
-
-export async function setOnboardingComplete(): Promise<void> {
-  await apiCall('/onboarding', { method: 'POST' });
-}
+export const setOnboardingComplete = () => {
+  localStorage.setItem(KEYS.ONBOARDING_COMPLETE, 'true');
+};
 
 // Helper to get today's date string
 export const getTodayString = () => getToday();

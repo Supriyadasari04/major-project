@@ -4,10 +4,10 @@ import { User, getUser, createUser, loginUser, logoutUser, setUser as setStoredU
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  signup: (name: string, email: string, password: string) => Promise<User>;
-  logout: () => Promise<void>;
-  updateUser: (updates: Partial<User>) => Promise<void>;
+  login: (email: string, password: string) => boolean;
+  signup: (name: string, email: string, password: string) => User;
+  logout: () => void;
+  updateUser: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,21 +17,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const storedUser = await getUser();
-        setUser(storedUser);
-      } catch (error) {
-        console.error('Failed to load user:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadUser();
+    const storedUser = getUser();
+    setUser(storedUser);
+    setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    const loggedInUser = await loginUser(email, password);
+  const login = (email: string, password: string): boolean => {
+    const loggedInUser = loginUser(email, password);
     if (loggedInUser) {
       setUser(loggedInUser);
       return true;
@@ -39,21 +31,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   };
 
-  const signup = async (name: string, email: string, password: string): Promise<User> => {
-    const newUser = await createUser(name, email, password);
+  const signup = (name: string, email: string, password: string): User => {
+    const newUser = createUser(name, email, password);
     setUser(newUser);
     return newUser;
   };
 
-  const logout = async () => {
-    await logoutUser();
+  const logout = () => {
+    logoutUser();
     setUser(null);
   };
 
-  const updateUser = async (updates: Partial<User>) => {
+  const updateUser = (updates: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...updates };
-      await setStoredUser(updatedUser);
+      setStoredUser(updatedUser);
       setUser(updatedUser);
     }
   };

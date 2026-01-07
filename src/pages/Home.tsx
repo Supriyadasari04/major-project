@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { getHabits, getTasks, getGoals, completeHabit, uncompleteHabit, toggleTask, getTodayString, addTask, Habit, Task } from '@/lib/storage';
+import { getHabits, getTasks, getGoals, completeHabit, uncompleteHabit, toggleTask, getTodayString, addTask, Task } from '@/lib/storage';
 import { generateMorningTasks } from '@/lib/gemini';
 import { toast } from '@/hooks/use-toast';
 import { Sun, Moon, MessageCircle, Target, CheckCircle2, Circle, Plus, Sparkles, User, Loader2 } from 'lucide-react';
@@ -11,72 +11,52 @@ import { Sun, Moon, MessageCircle, Target, CheckCircle2, Circle, Plus, Sparkles,
 const Home = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [habits, setHabits] = useState(getHabits());
+  const [tasks, setTasks] = useState(getTasks(getTodayString()));
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const today = getTodayString();
-
-  const loadData = useCallback(async () => {
-    try {
-      const [habitsData, tasksData] = await Promise.all([
-        getHabits(),
-        getTasks(today)
-      ]);
-      setHabits(habitsData);
-      setTasks(tasksData);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [today]);
 
   useEffect(() => {
     if (!user) navigate('/');
-    else loadData();
-  }, [user, navigate, loadData]);
+  }, [user, navigate]);
 
   const completedHabits = habits.filter(h => h.completedDates.includes(today)).length;
   const completedTasks = tasks.filter(t => t.completed).length;
 
-  const handleHabitToggle = async (id: string, isCompleted: boolean) => {
+  const handleHabitToggle = (id: string, isCompleted: boolean) => {
     if (isCompleted) {
-      await uncompleteHabit(id);
+      uncompleteHabit(id);
     } else {
-      await completeHabit(id);
+      completeHabit(id);
     }
-    const updatedHabits = await getHabits();
-    setHabits(updatedHabits);
+    setHabits(getHabits());
   };
 
-  const handleTaskToggle = async (id: string) => {
-    await toggleTask(id);
-    const updatedTasks = await getTasks(today);
-    setTasks(updatedTasks);
+  const handleTaskToggle = (id: string) => {
+    toggleTask(id);
+    setTasks(getTasks(today));
   };
 
   const handleMorningPrep = async () => {
     setIsGenerating(true);
     try {
-      const goals = await getGoals();
+      const goals = getGoals();
       const generatedTasks = await generateMorningTasks(
         goals.map(g => ({ title: g.title, category: g.category })),
         habits.map(h => ({ title: h.title, category: h.category }))
       );
       
-      for (const task of generatedTasks) {
-        await addTask({
+      generatedTasks.forEach(task => {
+        addTask({
           title: task.title,
           description: task.description,
           completed: false,
           date: today,
           priority: task.priority,
         });
-      }
+      });
       
-      const updatedTasks = await getTasks(today);
-      setTasks(updatedTasks);
+      setTasks(getTasks(today));
       toast({ title: 'Morning prep complete!', description: `${generatedTasks.length} tasks added for today.` });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to generate tasks.', variant: 'destructive' });
@@ -85,14 +65,6 @@ const Home = () => {
   };
 
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen gradient-calm flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen gradient-calm pb-24">
