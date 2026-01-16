@@ -31,7 +31,7 @@ const Signup = () => {
         return;
       }
 
-      signup(name, email, password);
+      await signup(name, email, password);
       toast({
         title: 'Welcome to Justly!',
         description: "Let's set up your goals and start your journey.",

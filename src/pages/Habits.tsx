@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,31 +11,55 @@ import { toast } from '@/hooks/use-toast';
 import { Plus, CheckCircle2, Circle, Trash2, Target, MessageCircle, Sparkles, Moon, User } from 'lucide-react';
 
 const Habits = () => {
-  const [habits, setHabits] = useState<Habit[]>(getHabits());
+  const [habits, setHabits] = useState<Habit[]>([]);
+  useEffect(() => {
+  const load = async () => {
+    const dbHabits = await getHabits();
+    setHabits(dbHabits);
+  };
+  load();
+}, []);
+
   const [isOpen, setIsOpen] = useState(false);
   const [newHabit, setNewHabit] = useState({ title: '', description: '', category: 'health' as const, frequency: 'daily' as const });
   const today = getTodayString();
 
-  const handleAdd = () => {
-    if (!newHabit.title.trim()) return;
-    addHabit(newHabit);
-    setHabits(getHabits());
-    setNewHabit({ title: '', description: '', category: 'health', frequency: 'daily' });
-    setIsOpen(false);
-    toast({ title: 'Habit added!', description: 'Keep it up! Consistency is key.' });
-  };
+  const handleAdd = async () => {
+  if (!newHabit.title.trim()) return;
 
-  const handleToggle = (id: string, isCompleted: boolean) => {
-    if (isCompleted) uncompleteHabit(id);
-    else completeHabit(id);
-    setHabits(getHabits());
-  };
+  await addHabit(newHabit);
+  setHabits(await getHabits());
 
-  const handleDelete = (id: string) => {
-    deleteHabit(id);
-    setHabits(getHabits());
-    toast({ title: 'Habit removed' });
-  };
+  setNewHabit({
+    title: '',
+    description: '',
+    category: 'health',
+    frequency: 'daily',
+  });
+
+  setIsOpen(false);
+
+  toast({
+    title: 'Habit added!',
+    description: 'Keep it up! Consistency is key.',
+  });
+};
+
+
+  const handleToggle = async (id: string, isCompleted: boolean) => {
+  if (isCompleted) await uncompleteHabit(id);
+  else await completeHabit(id);
+
+  setHabits(await getHabits());
+};
+
+
+  const handleDelete = async (id: string) => {
+  await deleteHabit(id);
+  setHabits(await getHabits());
+  toast({ title: 'Habit removed' });
+};
+
 
   const categoryColors: Record<string, string> = {
     health: 'bg-warm-coral-light text-warm-coral',
