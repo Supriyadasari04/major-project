@@ -1,166 +1,3 @@
-// import { pool } from "../config/db";
-// import { v4 as uuid } from "uuid";
-
-// export const addGoal = async (req: any, res: any) => {
-//   console.log("ADD GOAL HIT", req.body);
-//   const { userId, title, description, category } = req.body;
-
-//   const result = await pool.query(
-//     `INSERT INTO goals (id, user_id, title, description, category, created_at)
-//      VALUES ($1, $2, $3, $4, $5, $6)
-//      RETURNING *`,
-//     [uuid(), userId, title, description, category, new Date()]
-//   );
-
-//   res.json(result.rows[0]);
-// };
-
-// export const getGoals = async (req: any, res: any) => {
-//   const { userId } = req.params;
-//   const result = await pool.query(
-//     "SELECT * FROM goals WHERE user_id = $1 ORDER BY created_at ASC",
-//     [userId]
-//   );
-//   res.json(result.rows);
-// };
-
-// export const addHabit = async (req: any, res: any) => {
-//   console.log("ADD HABIT HIT", req.body);
-//   const { userId, title, description, category, frequency } = req.body;
-
-//   const result = await pool.query(
-//     `INSERT INTO habits (id, user_id, title, description, category, frequency, created_at)
-//      VALUES ($1, $2, $3, $4, $5, $6, $7)
-//      RETURNING *`,
-//     [uuid(), userId, title, description, category, frequency, new Date()]
-//   );
-
-//   res.json(result.rows[0]);
-// };
-
-// export const getHabits = async (req: any, res: any) => {
-//   const { userId } = req.params;
-//   const result = await pool.query(
-//     "SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at ASC",
-//     [userId]
-//   );
-//   res.json(result.rows);
-// };
-
-// export const setOnboardingComplete = async (req: any, res: any) => {
-//   const { userId } = req.body;
-
-//   await pool.query(
-//     "UPDATE users SET onboarding_complete = true WHERE id = $1",
-//     [userId]
-//   );
-
-//   res.json({ success: true });
-// };
-
-// export const getOnboardingStatus = async (req: any, res: any) => {
-//   const { userId } = req.params;
-
-//   const result = await pool.query(
-//     "SELECT onboarding_complete FROM users WHERE id = $1",
-//     [userId]
-//   );
-
-//   res.json({ completed: result.rows[0]?.onboarding_complete });
-// };
-
-// export const completeHabit = async (req: any, res: any) => {
-//   const { habitId } = req.params;
-//   const today = new Date().toISOString().split("T")[0];
-
-//   const result = await pool.query(
-//     `
-//     UPDATE habits
-//     SET
-//       completed_dates = 
-//         CASE 
-//           WHEN NOT ($1 = ANY(completed_dates)) 
-//           THEN array_append(completed_dates, $1)
-//           ELSE completed_dates
-//         END,
-//       streak = streak + 1
-//     WHERE id = $2
-//     RETURNING *
-//     `,
-//     [today, habitId]
-//   );
-
-//   res.json(result.rows[0]);
-// };
-
-// export const uncompleteHabit = async (req: any, res: any) => {
-//   const { habitId } = req.params;
-//   const today = new Date().toISOString().split("T")[0];
-
-//   const result = await pool.query(
-//     `
-//     UPDATE habits
-//     SET
-//       completed_dates = array_remove(completed_dates, $1),
-//       streak = GREATEST(streak - 1, 0)
-//     WHERE id = $2
-//     RETURNING *
-//     `,
-//     [today, habitId]
-//   );
-
-//   res.json(result.rows[0]);
-// };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { pool } from "../config/db";
 import { v4 as uuid } from "uuid";
 
@@ -396,8 +233,6 @@ export const getOnboardingStatus = async (req: any, res: any) => {
   res.json({ completed: result.rows[0]?.onboarding_complete });
 };
 
-
-// ✅ TASKS (DB)
 export const addTask = async (req: any, res: any) => {
   try {
     const { userId, title, description, completed, date, habitId, goalId, priority } = req.body;
@@ -492,10 +327,6 @@ export const deleteTask = async (req: any, res: any) => {
   }
 };
 
-
-// ============================
-// ✅ SETTINGS (DB)
-// ============================
 export const getSettings = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
@@ -505,7 +336,6 @@ export const getSettings = async (req: any, res: any) => {
       [userId]
     );
 
-    // ✅ If no settings row exists, create default row
     if (result.rowCount === 0) {
       const newRow = await pool.query(
         `INSERT INTO settings (
@@ -578,8 +408,6 @@ const {
   morningPrepCount,
 } = req.body;
 
-
-    // privacy = { shareAnalytics, showStreak }
     const shareAnalytics = privacy?.shareAnalytics;
     const showStreak = privacy?.showStreak;
 
@@ -635,9 +463,6 @@ return res.json({
   }
 };
 
-// ============================
-// ✅ REFLECTIONS (DB)
-// ============================
 export const addReflection = async (req: any, res: any) => {
   try {
     const {
@@ -695,9 +520,6 @@ export const getReflections = async (req: any, res: any) => {
   }
 };
 
-// ============================
-// ✅ JOURNAL ENTRIES (DB)
-// ============================
 export const addJournalEntry = async (req: any, res: any) => {
   try {
     const {
@@ -800,13 +622,6 @@ export const deleteJournalEntry = async (req: any, res: any) => {
   }
 };
 
-
-
-
-// ============================
-// ✅ ACHIEVEMENTS (DB)
-// ============================
-
 const defaultAchievements = [
   {
     achievement_id: "first_habit",
@@ -870,7 +685,6 @@ export const getAchievements = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
 
-    // ✅ ensure defaults exist in DB for this user
     for (const a of defaultAchievements) {
       await pool.query(
         `INSERT INTO achievements (achievement_id, user_id, title, description, icon, category)
@@ -898,7 +712,6 @@ export const unlockAchievement = async (req: any, res: any) => {
   try {
     const { userId, achievementId } = req.params;
 
-    // ✅ Ensure this achievement row exists for the user (create if missing)
     const def = defaultAchievements.find((a) => a.achievement_id === achievementId);
 
     if (def) {
@@ -910,7 +723,6 @@ export const unlockAchievement = async (req: any, res: any) => {
       );
     }
 
-    // ✅ Now unlock it
     const result = await pool.query(
       `UPDATE achievements
        SET unlocked_at = COALESCE(unlocked_at, $1)

@@ -88,7 +88,6 @@ const Home = () => {
     tasks.length === 0 ? 0 : Math.round((completedTasks / tasks.length) * 100);
 
 const handleHabitToggle = async (id: string, isCompleted: boolean) => {
-  // ✅ One-way completion: cannot uncomplete once done today
   if (isCompleted) return;
 
   await completeHabit(id);

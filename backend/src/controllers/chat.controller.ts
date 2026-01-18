@@ -1,9 +1,6 @@
 import { pool } from "../config/db";
 import { v4 as uuid } from "uuid";
 
-/**
- * Create a new chat session
- */
 export const createChatSession = async (req: any, res: any) => {
   try {
     const { userId, title } = req.body;
@@ -27,9 +24,6 @@ export const createChatSession = async (req: any, res: any) => {
   }
 };
 
-/**
- * List all chat sessions for user
- */
 export const getChatSessions = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
@@ -48,9 +42,6 @@ export const getChatSessions = async (req: any, res: any) => {
   }
 };
 
-/**
- * Get messages for a session
- */
 export const getChatMessages = async (req: any, res: any) => {
   try {
     const { sessionId } = req.params;
@@ -69,9 +60,6 @@ export const getChatMessages = async (req: any, res: any) => {
   }
 };
 
-/**
- * Add a message to session
- */
 export const addChatMessage = async (req: any, res: any) => {
   try {
     const { sessionId } = req.params;
@@ -83,7 +71,6 @@ export const addChatMessage = async (req: any, res: any) => {
 
     const msgId = uuid();
 
-    // ✅ Insert message
     const inserted = await pool.query(
       `INSERT INTO chat_messages (id, session_id, role, content, created_at)
        VALUES ($1,$2,$3,$4,now())
@@ -91,20 +78,12 @@ export const addChatMessage = async (req: any, res: any) => {
       [msgId, sessionId, role, content]
     );
 
-    // ✅ Update session updated_at
     await pool.query(
       `UPDATE chat_sessions SET updated_at = now() WHERE id = $1`,
       [sessionId]
     );
 
-    // ======================================================
-    // ✅ ACHIEVEMENT: chat_coach_10 (count only completed sessions)
-    // Rule: a session counts once when it has >=1 user msg AND >=1 assistant msg
-    // ======================================================
-
-    // ✅ Only attempt counting when assistant replies (better accuracy)
     if (role === "assistant") {
-      // 1) Get session info
       const sessionRes = await pool.query(
         `SELECT id, user_id, counted_for_achievement
          FROM chat_sessions
@@ -115,7 +94,6 @@ export const addChatMessage = async (req: any, res: any) => {
       const session = sessionRes.rows[0];
 
       if (session && session.counted_for_achievement === false) {
-        // 2) Check if session contains at least 1 user msg and 1 assistant msg
         const countsRes = await pool.query(
           `SELECT
             SUM(CASE WHEN role='user' THEN 1 ELSE 0 END) AS user_count,
@@ -129,7 +107,6 @@ export const addChatMessage = async (req: any, res: any) => {
         const assistantCount = Number(countsRes.rows[0]?.assistant_count ?? 0);
 
         if (userCount >= 1 && assistantCount >= 1) {
-          // 3) Mark session as counted
           await pool.query(
             `UPDATE chat_sessions
              SET counted_for_achievement = true
@@ -137,7 +114,6 @@ export const addChatMessage = async (req: any, res: any) => {
             [sessionId]
           );
 
-          // 4) Count total completed sessions for that user
           const totalRes = await pool.query(
             `SELECT COUNT(*)::int AS total
              FROM chat_sessions
@@ -147,7 +123,6 @@ export const addChatMessage = async (req: any, res: any) => {
 
           const totalCompleted = Number(totalRes.rows[0]?.total ?? 0);
 
-          // 5) Unlock achievement at 10
           if (totalCompleted >= 10) {
             await pool.query(
               `UPDATE achievements
@@ -167,10 +142,6 @@ export const addChatMessage = async (req: any, res: any) => {
   }
 };
 
-
-/**
- * Rename session title
- */
 export const renameChatSession = async (req: any, res: any) => {
   try {
     const { sessionId } = req.params;
@@ -199,9 +170,6 @@ export const renameChatSession = async (req: any, res: any) => {
   }
 };
 
-/**
- * Pin/unpin session
- */
 export const pinChatSession = async (req: any, res: any) => {
   try {
     const { sessionId } = req.params;
@@ -225,9 +193,6 @@ export const pinChatSession = async (req: any, res: any) => {
   }
 };
 
-/**
- * Delete session (and its messages via cascade)
- */
 export const deleteChatSession = async (req: any, res: any) => {
   try {
     const { sessionId } = req.params;

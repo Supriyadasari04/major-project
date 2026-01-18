@@ -43,7 +43,6 @@ export const sendMessage = async (
     recentMood?: string;
   }
 ): Promise<string> => {
-  // Build context string
   let contextString = "";
   if (context) {
     if (context.goals?.length) {
@@ -59,13 +58,10 @@ export const sendMessage = async (
 
   const fullSystemPrompt = SYSTEM_PROMPT + contextString;
 
-  // Convert chat history to Gemini format
   const contents: GeminiMessage[] = chatHistory.map((msg) => ({
     role: msg.role === "assistant" ? "model" : "user",
     parts: [{ text: msg.content }],
   }));
-
-  // Add current message
   contents.push({
     role: "user",
     parts: [{ text: userMessage }],
@@ -94,16 +90,12 @@ export const sendMessage = async (
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini API error:", errorText);
-
-      // ✅ Friendly fallback for quota/rate-limit errors
       if (response.status === 429) {
         return (
           "Looks like the AI service hit its usage limit right now (quota/rate limit) 😅\n\n" +
           "No worries — tell me what you want to achieve today, and I’ll help you break it into 3 small steps you can do immediately."
         );
       }
-
-      // ✅ Generic fallback for other failures
       return (
         "I'm having trouble connecting to the AI service right now.\n\n" +
         "But I can still help — what’s one goal you want to focus on today?"
@@ -170,7 +162,6 @@ Do not include any other text, just the JSON array.`;
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     
-    // Parse JSON from response
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);

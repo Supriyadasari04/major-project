@@ -59,7 +59,6 @@ const Habits = () => {
 
 
 const handleToggle = async (id: string, isCompleted: boolean) => {
-  // ✅ One-way completion: cannot uncomplete once done today
   if (isCompleted) return;
 
   await completeHabit(id);

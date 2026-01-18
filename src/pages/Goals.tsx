@@ -39,12 +39,9 @@ useEffect(() => {
   const timers: Record<string, any> = {};
 
   Object.entries(draftProgress).forEach(([goalId, value]) => {
-    // if same as already stored progress, don't save
     const goal = goals.find((g) => g.id === goalId);
     if (!goal) return;
     if (goal.progress === value) return;
-
-    // clear previous timer for this goal
     if (timers[goalId]) clearTimeout(timers[goalId]);
 
     timers[goalId] = setTimeout(async () => {

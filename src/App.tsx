@@ -1,69 +1,3 @@
-// import { Toaster } from "@/components/ui/toaster";
-// import { Toaster as Sonner } from "@/components/ui/sonner";
-// import { TooltipProvider } from "@/components/ui/tooltip";
-// import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-// import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-// import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-// import { isOnboardingComplete } from "@/lib/storage";
-// import Landing from "./pages/Landing";
-// import Login from "./pages/Login";
-// import Signup from "./pages/Signup";
-// import Onboarding from "./pages/Onboarding";
-// import Home from "./pages/Home";
-// import Coach from "./pages/Coach";
-// import Habits from "./pages/Habits";
-// import Reflect from "./pages/Reflect";
-// import Profile from "./pages/Profile";
-// import NotFound from "./pages/NotFound";
-
-// const queryClient = new QueryClient();
-
-// const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-//   const { user, isLoading } = useAuth();
-  
-//   if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-//   if (!user) return <Navigate to="/" replace />;
-//   // onboarding is async, so don't check like this here yet
-  
-//   return <>{children}</>;
-// };
-
-// const AppRoutes = () => {
-//   const { user } = useAuth();
-  
-//   return (
-//     <Routes>
-//       <Route path="/" element={user ? <Navigate to="/home" replace /> : <Landing />} />
-//       <Route path="/login" element={user ? <Navigate to="/home" replace /> : <Login />} />
-//       <Route path="/signup" element={user ? <Navigate to="/home" replace /> : <Signup />} />
-//       <Route path="/onboarding" element={user ? <Onboarding /> : <Navigate to="/" replace />} />
-//       <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-//       <Route path="/coach" element={<ProtectedRoute><Coach /></ProtectedRoute>} />
-//       <Route path="/habits" element={<ProtectedRoute><Habits /></ProtectedRoute>} />
-//       <Route path="/reflect" element={<ProtectedRoute><Reflect /></ProtectedRoute>} />
-//       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-//       <Route path="*" element={<NotFound />} />
-//     </Routes>
-//   );
-// };
-
-// const App = () => (
-//   <QueryClientProvider client={queryClient}>
-//     <AuthProvider>
-//       <TooltipProvider>
-//         <Toaster />
-//         <Sonner />
-//         <BrowserRouter>
-//           <AppRoutes />
-//         </BrowserRouter>
-//       </TooltipProvider>
-//     </AuthProvider>
-//   </QueryClientProvider>
-// );
-
-// export default App;
-
-
 import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -111,7 +45,6 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     check();
   }, [user]);
 
-  // auth still loading
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -120,10 +53,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  // not logged in
   if (!user) return <Navigate to="/" replace />;
 
-  // onboarding still checking
   if (onboardingDone === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -131,8 +62,6 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-
-  // onboarding not completed
   if (!onboardingDone) return <Navigate to="/onboarding" replace />;
 
   return <>{children}</>;
