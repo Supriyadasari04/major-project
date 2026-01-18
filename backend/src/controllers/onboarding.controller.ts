@@ -261,18 +261,40 @@ export const getHabits = async (req: any, res: any) => {
 export const completeHabit = async (req: any, res: any) => {
   try {
     const { habitId } = req.params;
-
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
     const result = await pool.query(
-      `UPDATE habits
-       SET completed_dates =
-         CASE
-           WHEN NOT ($1 = ANY(completed_dates)) THEN array_append(completed_dates, $1)
-           ELSE completed_dates
-         END
-       WHERE id = $2
-       RETURNING *`,
+      `
+      UPDATE habits
+      SET
+        completed_dates =
+          CASE
+            WHEN NOT ($1 = ANY(COALESCE(completed_dates, '{}')))
+            THEN array_append(COALESCE(completed_dates, '{}'), $1)
+            ELSE COALESCE(completed_dates, '{}')
+          END,
+
+        streak =
+          CASE
+            -- if already completed today, don't change streak
+            WHEN $1 = ANY(COALESCE(completed_dates, '{}')) THEN streak
+
+            -- if last_completed_date was yesterday -> +1
+            WHEN last_completed_date = ($1::date - INTERVAL '1 day')::date THEN COALESCE(streak, 0) + 1
+
+            -- otherwise reset to 1
+            ELSE 1
+          END,
+
+        last_completed_date =
+          CASE
+            WHEN $1 = ANY(COALESCE(completed_dates, '{}')) THEN last_completed_date
+            ELSE $1::date
+          END
+
+      WHERE id = $2
+      RETURNING *;
+      `,
       [today, habitId]
     );
 
@@ -287,17 +309,35 @@ export const completeHabit = async (req: any, res: any) => {
   }
 };
 
+
 export const uncompleteHabit = async (req: any, res: any) => {
   try {
     const { habitId } = req.params;
-
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
     const result = await pool.query(
-      `UPDATE habits
-       SET completed_dates = array_remove(completed_dates, $1)
-       WHERE id = $2
-       RETURNING *`,
+      `
+      UPDATE habits
+      SET
+        completed_dates = array_remove(COALESCE(completed_dates, '{}'), $1),
+
+        -- if user uncompletes today, reset streak safely
+        -- (real recalculation needs more history tracking, but this is consistent)
+        streak =
+          CASE
+            WHEN last_completed_date = $1::date THEN 0
+            ELSE streak
+          END,
+
+        last_completed_date =
+          CASE
+            WHEN last_completed_date = $1::date THEN NULL
+            ELSE last_completed_date
+          END
+
+      WHERE id = $2
+      RETURNING *;
+      `,
       [today, habitId]
     );
 
@@ -311,6 +351,7 @@ export const uncompleteHabit = async (req: any, res: any) => {
     res.status(500).json({ message: "Failed to uncomplete habit" });
   }
 };
+
 
 export const deleteHabit = async (req: any, res: any) => {
   try {
@@ -464,7 +505,7 @@ export const getSettings = async (req: any, res: any) => {
       [userId]
     );
 
-    // If no settings row exists, create default row
+    // ✅ If no settings row exists, create default row
     if (result.rowCount === 0) {
       const newRow = await pool.query(
         `INSERT INTO settings (
@@ -489,57 +530,105 @@ export const getSettings = async (req: any, res: any) => {
         ]
       );
 
-      return res.json(newRow.rows[0]);
+      const row = newRow.rows[0];
+
+      return res.json({
+        notifications: row.notifications,
+        morningPrepTime: row.morning_prep_time,
+        eveningReflectionTime: row.evening_reflection_time,
+        theme: row.theme,
+        privacy: {
+          shareAnalytics: row.share_analytics,
+          showStreak: row.show_streak,
+        },
+      });
     }
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+
+    return res.json({
+  notifications: row.notifications,
+  morningPrepTime: row.morning_prep_time,
+  eveningReflectionTime: row.evening_reflection_time,
+  theme: row.theme,
+  morningPrepCount: row.morning_prep_count ?? 0,
+  privacy: {
+    shareAnalytics: row.share_analytics,
+    showStreak: row.show_streak,
+  },
+});
+
   } catch (error: any) {
     console.error("GET SETTINGS ERROR:", error.message);
     res.status(500).json({ message: "Failed to get settings" });
   }
 };
 
+
 export const updateSettings = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
 
-    const {
-      notifications,
-      morningPrepTime,
-      eveningReflectionTime,
-      theme,
-      privacy,
-    } = req.body;
+const {
+  notifications,
+  morningPrepTime,
+  eveningReflectionTime,
+  theme,
+  privacy,
+  morningPrepCount,
+} = req.body;
+
 
     // privacy = { shareAnalytics, showStreak }
     const shareAnalytics = privacy?.shareAnalytics;
     const showStreak = privacy?.showStreak;
 
-    const result = await pool.query(
-      `UPDATE settings
-       SET
-         notifications = COALESCE($1, notifications),
-         morning_prep_time = COALESCE($2, morning_prep_time),
-         evening_reflection_time = COALESCE($3, evening_reflection_time),
-         theme = COALESCE($4, theme),
-         share_analytics = COALESCE($5, share_analytics),
-         show_streak = COALESCE($6, show_streak),
-         updated_at = $7
-       WHERE user_id = $8
-       RETURNING *`,
-      [
-        notifications ?? null,
-        morningPrepTime ?? null,
-        eveningReflectionTime ?? null,
-        theme ?? null,
-        shareAnalytics ?? null,
-        showStreak ?? null,
-        new Date(),
-        userId,
-      ]
-    );
+const result = await pool.query(
+  `UPDATE settings
+   SET
+     notifications = COALESCE($1, notifications),
+     morning_prep_time = COALESCE($2, morning_prep_time),
+     evening_reflection_time = COALESCE($3, evening_reflection_time),
+     theme = COALESCE($4, theme),
+     share_analytics = COALESCE($5, share_analytics),
+     show_streak = COALESCE($6, show_streak),
+     morning_prep_count = COALESCE($7, morning_prep_count),
+     updated_at = $8
+   WHERE user_id = $9
+   RETURNING *`,
+  [
+    notifications ?? null,
+    morningPrepTime ?? null,
+    eveningReflectionTime ?? null,
+    theme ?? null,
+    shareAnalytics ?? null,
+    showStreak ?? null,
+    morningPrepCount ?? null,
+    new Date(),
+    userId,
+  ]
+);
 
-    res.json(result.rows[0]);
+
+    if (result.rowCount === 0) {
+  return res.status(404).json({ message: "Settings not found for user" });
+}
+
+    const row = result.rows[0];
+
+return res.json({
+  notifications: row.notifications,
+  morningPrepTime: row.morning_prep_time,
+  eveningReflectionTime: row.evening_reflection_time,
+  theme: row.theme,
+  morningPrepCount: row.morning_prep_count ?? 0,
+  privacy: {
+    shareAnalytics: row.share_analytics,
+    showStreak: row.show_streak,
+  },
+});
+
+
   } catch (error: any) {
     console.error("UPDATE SETTINGS ERROR:", error.message);
     res.status(500).json({ message: "Failed to update settings" });
@@ -666,6 +755,53 @@ export const getJournalEntries = async (req: any, res: any) => {
   }
 };
 
+export const updateJournalEntry = async (req: any, res: any) => {
+  try {
+    const { journalId } = req.params;
+    const { content } = req.body;
+
+    const result = await pool.query(
+      `UPDATE journal_entries
+       SET content = COALESCE($1, content)
+       WHERE id = $2
+       RETURNING *`,
+      [content ?? null, journalId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Journal entry not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error("UPDATE JOURNAL ERROR:", error.message);
+    res.status(500).json({ message: "Failed to update journal entry" });
+  }
+};
+
+
+export const deleteJournalEntry = async (req: any, res: any) => {
+  try {
+    const { journalId } = req.params;
+
+    const result = await pool.query(
+      `DELETE FROM journal_entries WHERE id = $1 RETURNING *`,
+      [journalId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Journal entry not found" });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("DELETE JOURNAL ERROR:", error.message);
+    res.status(500).json({ message: "Failed to delete journal entry" });
+  }
+};
+
+
+
 
 // ============================
 // ✅ ACHIEVEMENTS (DB)
@@ -762,6 +898,19 @@ export const unlockAchievement = async (req: any, res: any) => {
   try {
     const { userId, achievementId } = req.params;
 
+    // ✅ Ensure this achievement row exists for the user (create if missing)
+    const def = defaultAchievements.find((a) => a.achievement_id === achievementId);
+
+    if (def) {
+      await pool.query(
+        `INSERT INTO achievements (achievement_id, user_id, title, description, icon, category)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (achievement_id, user_id) DO NOTHING`,
+        [def.achievement_id, userId, def.title, def.description, def.icon, def.category]
+      );
+    }
+
+    // ✅ Now unlock it
     const result = await pool.query(
       `UPDATE achievements
        SET unlocked_at = COALESCE(unlocked_at, $1)

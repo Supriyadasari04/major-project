@@ -575,7 +575,11 @@
 
 
 
- // LocalStorage keys 
+// LocalStorage keys 
+
+import { toast } from "@/hooks/use-toast"; 
+
+
 const KEYS = {
   USER: 'justly_user',
   GOALS: 'justly_goals',
@@ -587,6 +591,8 @@ const KEYS = {
   ACHIEVEMENTS: 'justly_achievements',
   SETTINGS: 'justly_settings',
   ONBOARDING_COMPLETE: 'justly_onboarding_complete',
+    CHAT_SESSIONS: "justly_chat_sessions",
+  ACTIVE_CHAT_SESSION_ID: "justly_active_chat_session_id",
 };
 
 
@@ -665,6 +671,15 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  pinned?: boolean;
+}
+
+
 export interface Achievement {
   id: string;
   title: string;
@@ -683,16 +698,17 @@ export interface Settings {
     shareAnalytics: boolean;
     showStreak: boolean;
   };
+  morningPrepCount?: number;
 }
 
-// Helper functions
+
+
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
 const getToday = () => new Date().toISOString().split('T')[0];
 
 const API_URL = "http://localhost:5000/api/auth";
 
-// User
 export const getUser = (): User | null => {
   const data = localStorage.getItem(KEYS.USER);
   return data ? JSON.parse(data) : null;
@@ -740,10 +756,10 @@ export const loginUser = async (
 export const logoutUser = () => {
   localStorage.removeItem(KEYS.USER);
   localStorage.removeItem(KEYS.ONBOARDING_COMPLETE);
+  localStorage.removeItem(KEYS.ACTIVE_CHAT_SESSION_ID);
 };
 
 const ONBOARDING_API = "http://localhost:5000/api/onboarding";
-// Goals
 export const getGoals = async (): Promise<Goal[]> => {
   const user = getUser();
   if (!user) return [];
@@ -763,7 +779,7 @@ export const saveGoals = (goals: Goal[]) => {
 };
 
 export const addGoal = async (
-  goal: Omit<Goal, 'id' | 'createdAt' | 'progress'>
+  goal: Omit<Goal, "id" | "createdAt" | "progress">
 ): Promise<Goal> => {
   const user = getUser();
   if (!user) throw new Error("Not authenticated");
@@ -774,12 +790,21 @@ export const addGoal = async (
     body: JSON.stringify({ ...goal, userId: user.id }),
   });
 
+  if (!res.ok) throw new Error("Failed to add goal");
+
   const saved = await res.json();
-  return {
+
+  const finalGoal: Goal = {
     ...saved,
     createdAt: saved.created_at,
   };
+
+  // ✅ unlock goals_3 if user has 3+ goals
+  await checkAndUnlockGoalsAchievement();
+
+  return finalGoal;
 };
+
 
 
 export const updateGoal = async (
@@ -811,8 +836,8 @@ export const deleteGoal = async (goalId: string): Promise<void> => {
   if (!res.ok) throw new Error("Failed to delete goal");
 };
 
+// ✅ HABITS (DB)
 
-// Habits
 export const getHabits = async (): Promise<Habit[]> => {
   const user = getUser();
   if (!user) return [];
@@ -822,13 +847,21 @@ export const getHabits = async (): Promise<Habit[]> => {
 
   const data = await res.json();
 
-  return data.map((h: any) => ({
-    ...h,
-    createdAt: h.created_at,
-    completedDates: h.completed_dates ?? [],
-  }));
-};
+  return data.map((h: any) => {
+    const rawDates = h.completed_dates ?? [];
 
+    const completedDates = Array.isArray(rawDates)
+      ? rawDates.map((d: any) => String(d).slice(0, 10))
+      : [];
+
+    return {
+      ...h,
+      createdAt: h.created_at,
+      completedDates,
+      streak: h.streak ?? 0,
+    };
+  });
+};
 
 export const addHabit = async (
   habit: Omit<Habit, "id" | "createdAt" | "completedDates" | "streak">
@@ -846,15 +879,19 @@ export const addHabit = async (
 
   const saved = await res.json();
 
+  const rawDates = saved.completed_dates ?? [];
+
+  const completedDates = Array.isArray(rawDates)
+    ? rawDates.map((d: any) => String(d).slice(0, 10))
+    : [];
+
   return {
     ...saved,
     createdAt: saved.created_at,
-    completedDates: saved.completed_dates ?? [],
+    completedDates,
     streak: saved.streak ?? 0,
   };
 };
-
-
 
 export const completeHabit = async (habitId: string): Promise<void> => {
   const res = await fetch(`${ONBOARDING_API}/habits/${habitId}/complete`, {
@@ -862,9 +899,27 @@ export const completeHabit = async (habitId: string): Promise<void> => {
   });
 
   if (!res.ok) throw new Error("Failed to complete habit");
+
+  const updated = await res.json();
+
+  // ✅ Unlock "first_habit"
+  try {
+    await unlockIfNotAlready("first_habit");
+  } catch (err) {
+    console.error("Achievement unlock failed:", err);
+  }
+
+  // ✅ Unlock streak achievements
+  try {
+    const streak = updated?.streak ?? 0;
+    if (streak >= 7) await unlockIfNotAlready("streak_7");
+    if (streak >= 30) await unlockIfNotAlready("streak_30");
+  } catch (err) {
+    console.error("Streak achievement unlock failed:", err);
+  }
 };
 
-
+// (keep it for admin/testing, but UI won’t call this)
 export const uncompleteHabit = async (habitId: string): Promise<void> => {
   const res = await fetch(`${ONBOARDING_API}/habits/${habitId}/uncomplete`, {
     method: "POST",
@@ -872,6 +927,7 @@ export const uncompleteHabit = async (habitId: string): Promise<void> => {
 
   if (!res.ok) throw new Error("Failed to uncomplete habit");
 };
+
 
 
 export const deleteHabit = async (habitId: string): Promise<void> => {
@@ -882,9 +938,6 @@ export const deleteHabit = async (habitId: string): Promise<void> => {
   if (!res.ok) throw new Error("Failed to delete habit");
 };
 
-
-// Tasks
-// ✅ TASKS (DB)
 export const getTasks = async (date?: string): Promise<Task[]> => {
   const user = getUser();
   if (!user) return [];
@@ -938,11 +991,6 @@ export const deleteTask = async (taskId: string): Promise<void> => {
   if (!res.ok) throw new Error("Failed to delete task");
 };
 
-
-// Journal
-// ============================
-// ✅ JOURNAL (DB)
-// ============================
 export const getJournalEntries = async (): Promise<JournalEntry[]> => {
   const user = getUser();
   if (!user) return [];
@@ -981,6 +1029,38 @@ export const addJournalEntry = async (
 
   const saved = await res.json();
 
+  const finalEntry: JournalEntry = {
+    id: saved.id,
+    date: saved.date,
+    content: saved.content,
+    mood: saved.mood,
+    tags: saved.tags ?? [],
+    autoGenerated: saved.auto_generated ?? false,
+    chatSummary: saved.chat_summary ?? undefined,
+    reflectionSummary: saved.reflection_summary ?? undefined,
+    createdAt: saved.created_at,
+  };
+
+  // ✅ unlock journal_10 if user has 10+ entries
+  await checkAndUnlockJournalAchievement();
+
+  return finalEntry;
+};
+
+export const updateJournalEntry = async (
+  journalId: string,
+  updates: { content?: string }
+): Promise<JournalEntry> => {
+  const res = await fetch(`${ONBOARDING_API}/journal/${journalId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+
+  if (!res.ok) throw new Error("Failed to update journal entry");
+
+  const saved = await res.json();
+
   return {
     id: saved.id,
     date: saved.date,
@@ -993,17 +1073,21 @@ export const addJournalEntry = async (
     createdAt: saved.created_at,
   };
 };
+export const deleteJournalEntry = async (journalId: string): Promise<void> => {
+  const res = await fetch(`${ONBOARDING_API}/journal/${journalId}`, {
+    method: "DELETE",
+  });
 
-
-export const getJournalByDate = (date: string): JournalEntry | undefined => {
-  return getJournalEntries().find(e => e.date === date);
+  if (!res.ok) throw new Error("Failed to delete journal entry");
 };
 
-// Reflections
 
-// ============================
-// ✅ REFLECTIONS (DB)
-// ============================
+
+export const getJournalByDate = async (date: string): Promise<JournalEntry | undefined> => {
+  const entries = await getJournalEntries();
+  return entries.find((e) => e.date === date);
+};
+
 export const getReflections = async (): Promise<Reflection[]> => {
   const user = getUser();
   if (!user) return [];
@@ -1042,6 +1126,13 @@ export const addReflection = async (
 
   const saved = await res.json();
 
+  // ✅ unlock achievement: first reflection
+  try {
+    await unlockAchievement("first_reflection");
+  } catch (err) {
+    console.error("Failed to unlock first_reflection achievement:", err);
+  }
+
   return {
     id: saved.id,
     date: saved.date,
@@ -1055,44 +1146,202 @@ export const addReflection = async (
   };
 };
 
+
 export const saveReflections = (reflections: Reflection[]) => {
   localStorage.setItem(KEYS.REFLECTIONS, JSON.stringify(reflections));
 };
 
-export const getReflectionByDate = (date: string): Reflection | undefined => {
-  return getReflections().find(r => r.date === date);
+export const getReflectionByDate = async (date: string): Promise<Reflection | undefined> => {
+  const reflections = await getReflections();
+  return reflections.find((r) => r.date === date);
 };
 
-// Chat History
-export const getChatHistory = (): ChatMessage[] => {
-  const data = localStorage.getItem(KEYS.CHAT_HISTORY);
-  return data ? JSON.parse(data) : [];
+// ============================
+// ✅ CHAT (Postgres DB)
+// ============================
+
+const CHAT_API = "http://localhost:5000/api/chat";
+
+// ✅ Keep only active chat session id in localStorage
+export const getActiveChatSessionId = (): string | null => {
+  return localStorage.getItem(KEYS.ACTIVE_CHAT_SESSION_ID);
 };
 
-export const saveChatHistory = (messages: ChatMessage[]) => {
-  localStorage.setItem(KEYS.CHAT_HISTORY, JSON.stringify(messages));
+export const setActiveChatSessionId = (sessionId: string | null) => {
+  if (!sessionId) {
+    localStorage.removeItem(KEYS.ACTIVE_CHAT_SESSION_ID);
+    return;
+  }
+  localStorage.setItem(KEYS.ACTIVE_CHAT_SESSION_ID, sessionId);
 };
 
-export const addChatMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>): ChatMessage => {
-  const newMessage: ChatMessage = {
-    ...message,
-    id: generateId(),
-    timestamp: new Date().toISOString(),
+// ✅ Generate title from first message text
+const generateChatTitleFromText = (text: string) => {
+  const cleaned = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^\w\s]/g, "");
+
+  if (!cleaned) return "New Chat";
+
+  const words = cleaned.split(" ").slice(0, 6).join(" ");
+  return words.length > 35 ? words.slice(0, 35) + "…" : words;
+};
+
+// ✅ GET sessions from DB
+export const getChatSessions = async (): Promise<ChatSession[]> => {
+  const user = getUser();
+  if (!user) return [];
+
+  const res = await fetch(`${CHAT_API}/sessions/${user.id}`);
+  if (!res.ok) throw new Error("Failed to fetch chat sessions");
+
+  const data = await res.json();
+
+  return data.map((s: any) => ({
+    id: s.id,
+    title: s.title,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+    pinned: s.pinned ?? false,
+  }));
+};
+
+// ✅ CREATE session in DB
+export const createChatSession = async (): Promise<ChatSession> => {
+  const user = getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const res = await fetch(`${CHAT_API}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      title: "New Chat",
+    }),
+  });
+
+  if (!res.ok) throw new Error("Failed to create chat session");
+
+  const s = await res.json();
+
+  const session: ChatSession = {
+    id: s.id,
+    title: s.title,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+    pinned: s.pinned ?? false,
   };
-  const history = getChatHistory();
-  history.push(newMessage);
-  saveChatHistory(history);
-  return newMessage;
+
+  setActiveChatSessionId(session.id);
+
+  return session;
 };
 
-export const clearChatHistory = () => {
-  localStorage.removeItem(KEYS.CHAT_HISTORY);
+// ✅ RENAME session in DB
+export const renameChatSession = async (sessionId: string, newTitle: string): Promise<void> => {
+  const title = newTitle.trim() || "New Chat";
+
+  const res = await fetch(`${CHAT_API}/sessions/${sessionId}/rename`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+
+  if (!res.ok) throw new Error("Failed to rename chat session");
 };
 
-// Achievements
-// ============================
-// ✅ ACHIEVEMENTS (DB)
-// ============================
+// ✅ PIN/UNPIN session in DB
+export const togglePinChatSession = async (sessionId: string): Promise<void> => {
+  const res = await fetch(`${CHAT_API}/sessions/${sessionId}/pin`, {
+    method: "PATCH",
+  });
+
+  if (!res.ok) throw new Error("Failed to pin/unpin chat session");
+};
+
+// ✅ DELETE session in DB
+export const deleteChatSession = async (sessionId: string): Promise<void> => {
+  const res = await fetch(`${CHAT_API}/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) throw new Error("Failed to delete chat session");
+
+  // ✅ if deleted active, clear active id
+  const active = getActiveChatSessionId();
+  if (active === sessionId) {
+    setActiveChatSessionId(null);
+  }
+};
+
+// ✅ GET messages from DB
+export const getChatMessagesBySession = async (sessionId: string): Promise<ChatMessage[]> => {
+  const res = await fetch(`${CHAT_API}/messages/${sessionId}`);
+  if (!res.ok) throw new Error("Failed to fetch chat messages");
+
+  const data = await res.json();
+
+  return data.map((m: any) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: m.created_at,
+  }));
+};
+
+// ✅ ADD message to DB + auto-title (first user msg)
+export const addMessageToSession = async (
+  sessionId: string,
+  message: Omit<ChatMessage, "id" | "timestamp">
+): Promise<ChatMessage> => {
+  const res = await fetch(`${CHAT_API}/messages/${sessionId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: message.role,
+      content: message.content,
+    }),
+  });
+
+  if (!res.ok) throw new Error("Failed to add chat message");
+
+  const saved = await res.json();
+
+  const savedMessage: ChatMessage = {
+    id: saved.id,
+    role: saved.role,
+    content: saved.content,
+    timestamp: saved.created_at,
+  };
+
+  // ✅ Auto-title: if first USER message → rename session
+  if (message.role === "user") {
+    try {
+      // Fetch session list (small + safe)
+      const sessions = await getChatSessions();
+      const session = sessions.find((s) => s.id === sessionId);
+
+      if (session && session.title === "New Chat") {
+        const newTitle = generateChatTitleFromText(message.content);
+        await renameChatSession(sessionId, newTitle);
+      }
+    } catch {
+      // ignore auto-title failure (chat still works)
+    }
+  }
+
+  return savedMessage;
+};
+// ✅ Backward compatible: used in Reflect.tsx
+export const getChatHistory = async (): Promise<ChatMessage[]> => {
+  const sessionId = getActiveChatSessionId();
+  if (!sessionId) return [];
+  return await getChatMessagesBySession(sessionId);
+};
+
+
+
 export const getAchievements = async (): Promise<Achievement[]> => {
   const user = getUser();
   if (!user) return [];
@@ -1112,54 +1361,156 @@ export const getAchievements = async (): Promise<Achievement[]> => {
   }));
 };
 
-export const unlockAchievement = async (id: string): Promise<void> => {
-  const res = await fetch(`${ONBOARDING_API}/achievements/${id}/unlock`, {
+export const unlockAchievement = async (id: string): Promise<Achievement | null> => {
+  const user = getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const res = await fetch(`${ONBOARDING_API}/achievements/${user.id}/${id}/unlock`, {
     method: "PATCH",
   });
 
   if (!res.ok) throw new Error("Failed to unlock achievement");
+
+  const a = await res.json();
+
+  return {
+    id: a.achievement_id ?? a.id,
+    title: a.title,
+    description: a.description,
+    icon: a.icon,
+    category: a.category,
+    unlockedAt: a.unlocked_at ?? undefined,
+  };
 };
 
 
-// const defaultAchievements: Achievement[] = [
-//   { id: 'first_habit', title: 'First Step', description: 'Complete your first habit', icon: '🌱', category: 'milestone' },
-//   { id: 'streak_7', title: 'Week Warrior', description: 'Maintain a 7-day streak', icon: '🔥', category: 'streak' },
-//   { id: 'streak_30', title: 'Monthly Master', description: 'Maintain a 30-day streak', icon: '⭐', category: 'streak' },
-//   { id: 'first_reflection', title: 'Mindful Moment', description: 'Complete your first reflection', icon: '🧘', category: 'milestone' },
-//   { id: 'journal_10', title: 'Story Teller', description: 'Write 10 journal entries', icon: '📖', category: 'milestone' },
-//   { id: 'goals_3', title: 'Goal Getter', description: 'Set 3 goals', icon: '🎯', category: 'milestone' },
-//   { id: 'morning_prep_7', title: 'Early Bird', description: 'Complete 7 morning preps', icon: '🌅', category: 'streak' },
-//   { id: 'chat_coach_10', title: 'Open Mind', description: 'Have 10 coaching sessions', icon: '💬', category: 'milestone' },
-// ];
+// ============================
+// ✅ ACHIEVEMENTS HELPERS
+// ============================
+const ACHIEVEMENT_CELEBRATIONS: Record<string, { title: string; description: string }> = {
+  first_habit: {
+    title: "🎉 Achievement Unlocked: First Step!",
+    description: "You completed your first habit — keep the momentum going 🌱",
+  },
+  streak_7: {
+    title: "🔥 Achievement Unlocked: Week Warrior!",
+    description: "7-day streak! Your consistency is building real change 💪",
+  },
+  streak_30: {
+    title: "⭐ Achievement Unlocked: Monthly Master!",
+    description: "30 days strong — that’s discipline at its best 🏆",
+  },
+  goals_3: {
+    title: "🎯 Achievement Unlocked: Goal Getter!",
+    description: "3 goals set — now you're officially serious about growth 🚀",
+  },
+  journal_10: {
+    title: "📖 Achievement Unlocked: Story Teller!",
+    description: "10 journal entries — self-awareness level up 🧠✨",
+  },
+  first_reflection: {
+    title: "🧘 Achievement Unlocked: Mindful Moment!",
+    description: "Your first reflection is saved — keep checking in with yourself 💜",
+  },
+  morning_prep_7: {
+    title: "🌅 Achievement Unlocked: Early Bird!",
+    description: "7 morning preps! You’re designing your day like a pro ✅",
+  },
+  chat_coach_10: {
+    title: "💬 Achievement Unlocked: Open Mind!",
+    description: "10 coaching sessions — you’re investing in yourself 💯",
+  },
+};
 
-// Settings
-// ============================
-// ✅ SETTINGS (DB)
-// ============================
+
+
+
+const unlockIfNotAlready = async (achievementId: string) => {
+  const user = getUser();
+  if (!user) return;
+
+  try {
+    const before = await getAchievements();
+    const wasUnlocked = before.find((a) => a.id === achievementId)?.unlockedAt;
+
+    const unlocked = await unlockAchievement(achievementId);
+
+    const afterUnlocked = unlocked?.unlockedAt;
+
+    // ✅ show popup only if it was locked before and now unlocked
+    if (!wasUnlocked && afterUnlocked) {
+      const msg = ACHIEVEMENT_CELEBRATIONS[achievementId];
+
+      toast({
+        title: msg?.title ?? "🎉 Achievement unlocked!",
+        description: msg?.description ?? "You earned a new badge!",
+      });
+    }
+  } catch (err) {
+    console.error("unlockIfNotAlready error:", err);
+  }
+};
+
+
+const checkAndUnlockGoalsAchievement = async () => {
+  const user = getUser();
+  if (!user) return;
+
+  try {
+    const goals = await getGoals();
+    if (goals.length >= 3) {
+      await unlockIfNotAlready("goals_3");
+    }
+  } catch (err) {
+    console.error("checkAndUnlockGoalsAchievement error:", err);
+  }
+};
+
+const checkAndUnlockJournalAchievement = async () => {
+  const user = getUser();
+  if (!user) return;
+
+  try {
+    const journals = await getJournalEntries();
+    if (journals.length >= 10) {
+      await unlockIfNotAlready("journal_10");
+    }
+  } catch (err) {
+    console.error("checkAndUnlockJournalAchievement error:", err);
+  }
+};
+
+export const recordMorningPrepAndUnlockAchievement = async (): Promise<void> => {
+  const settings = await getSettings();
+
+  const current = settings.morningPrepCount ?? 0;
+  const nextCount = current + 1;
+
+  await saveSettings({
+    ...settings,
+    morningPrepCount: nextCount,
+  });
+
+  if (nextCount >= 7) {
+    await unlockIfNotAlready("morning_prep_7");
+  }
+};
+
+
+
 export const getSettings = async (): Promise<Settings> => {
   const user = getUser();
-  if (!user) return defaultSettings;
+  if (!user) throw new Error("Not authenticated");
 
   const res = await fetch(`${ONBOARDING_API}/settings/${user.id}`);
   if (!res.ok) throw new Error("Failed to fetch settings");
 
-  const s = await res.json();
-
-  return {
-    notifications: s.notifications ?? true,
-    morningPrepTime: s.morning_prep_time ?? "07:00",
-    eveningReflectionTime: s.evening_reflection_time ?? "21:00",
-    theme: (s.theme ?? "light") as Settings["theme"],
-    privacy: {
-      shareAnalytics: s.share_analytics ?? false,
-      showStreak: s.show_streak ?? true,
-    },
-  };
+  return await res.json();
 };
 
 export const saveSettings = async (settings: Settings): Promise<void> => {
   const user = getUser();
-  if (!user) return;
+  if (!user) throw new Error("Not authenticated");
 
   const res = await fetch(`${ONBOARDING_API}/settings/${user.id}`, {
     method: "PUT",
@@ -1182,7 +1533,6 @@ const defaultSettings: Settings = {
   },
 };
 
-// Onboarding
 export const setOnboardingComplete = async () => {
   const user = getUser();
   if (!user) return;
@@ -1205,6 +1555,4 @@ export const isOnboardingComplete = async (): Promise<boolean> => {
   return data.completed;
 };
 
-
-// Helper to get today's date string
 export const getTodayString = () => getToday();

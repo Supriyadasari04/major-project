@@ -36,7 +36,7 @@ Always refer to the user's goals, habits, and progress when relevant to make adv
 
 export const sendMessage = async (
   userMessage: string,
-  chatHistory: { role: 'user' | 'assistant'; content: string }[],
+  chatHistory: { role: "user" | "assistant"; content: string }[],
   context?: {
     goals?: string[];
     habits?: string[];
@@ -44,13 +44,13 @@ export const sendMessage = async (
   }
 ): Promise<string> => {
   // Build context string
-  let contextString = '';
+  let contextString = "";
   if (context) {
     if (context.goals?.length) {
-      contextString += `\n\nUser's current goals: ${context.goals.join(', ')}`;
+      contextString += `\n\nUser's current goals: ${context.goals.join(", ")}`;
     }
     if (context.habits?.length) {
-      contextString += `\nUser's habits: ${context.habits.join(', ')}`;
+      contextString += `\nUser's habits: ${context.habits.join(", ")}`;
     }
     if (context.recentMood) {
       contextString += `\nRecent mood: ${context.recentMood}`;
@@ -60,14 +60,14 @@ export const sendMessage = async (
   const fullSystemPrompt = SYSTEM_PROMPT + contextString;
 
   // Convert chat history to Gemini format
-  const contents: GeminiMessage[] = chatHistory.map(msg => ({
-    role: msg.role === 'assistant' ? 'model' : 'user',
+  const contents: GeminiMessage[] = chatHistory.map((msg) => ({
+    role: msg.role === "assistant" ? "model" : "user",
     parts: [{ text: msg.content }],
   }));
 
   // Add current message
   contents.push({
-    role: 'user',
+    role: "user",
     parts: [{ text: userMessage }],
   });
 
@@ -84,32 +84,53 @@ export const sendMessage = async (
 
   try {
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Gemini API error:', error);
-      throw new Error('Failed to get response from AI');
+      const errorText = await response.text();
+      console.error("Gemini API error:", errorText);
+
+      // ✅ Friendly fallback for quota/rate-limit errors
+      if (response.status === 429) {
+        return (
+          "Looks like the AI service hit its usage limit right now (quota/rate limit) 😅\n\n" +
+          "No worries — tell me what you want to achieve today, and I’ll help you break it into 3 small steps you can do immediately."
+        );
+      }
+
+      // ✅ Generic fallback for other failures
+      return (
+        "I'm having trouble connecting to the AI service right now.\n\n" +
+        "But I can still help — what’s one goal you want to focus on today?"
+      );
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!text) {
-      throw new Error('No response from AI');
+      return (
+        "I didn’t receive a response from the AI service.\n\n" +
+        "Tell me what you're feeling today, and I’ll help you reflect and plan your next step."
+      );
     }
 
     return text;
   } catch (error) {
-    console.error('Error calling Gemini:', error);
-    throw error;
+    console.error("Error calling Gemini:", error);
+
+    return (
+      "I couldn’t reach the AI service due to a network issue.\n\n" +
+      "Still here with you — tell me what’s on your mind, and I’ll support you through it."
+    );
   }
 };
+
 
 export const generateMorningTasks = async (
   goals: { title: string; category: string }[],

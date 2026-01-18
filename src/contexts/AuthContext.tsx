@@ -19,7 +19,6 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
 
-  // 🔴 MUST be async now
   login: (email: string, password: string) => Promise<boolean>;
   signup: (name: string, email: string, password: string) => Promise<User>;
 
@@ -39,7 +38,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(false);
   }, []);
 
-  // ✅ FIXED: async + await
   const login = async (email: string, password: string): Promise<boolean> => {
     const loggedInUser = await loginUser(email, password);
 
@@ -50,7 +48,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   };
 
-  // ✅ FIXED: return User
   const signup = async (
     name: string,
     email: string,

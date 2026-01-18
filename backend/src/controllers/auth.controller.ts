@@ -26,7 +26,14 @@ export const signup = async (req: any, res: any) => {
 
     console.log("USER INSERTED:", result.rows[0]);
 
-    res.status(201).json(result.rows[0]);
+    const row = result.rows[0];
+res.status(201).json({
+  id: row.id,
+  name: row.name,
+  email: row.email,
+  createdAt: row.created_at,
+});
+
   } catch (error: any) {
     console.error("SIGNUP ERROR:", error.message);
     res.status(400).json({ message: error.message });

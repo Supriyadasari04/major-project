@@ -283,7 +283,6 @@ const Profile = () => {
   };
 
   const menuItems = [
-    { id: "goals", icon: Target, label: "My Goals", count: goals.length },
     {
       id: "achievements",
       icon: Trophy,
@@ -396,6 +395,20 @@ const Profile = () => {
             </CardContent>
           </Card>
         </div>
+
+<Card>
+  <CardContent className="p-0">
+    <button
+      onClick={() => navigate("/goals")}
+      className="flex items-center gap-3 w-full p-4 hover:bg-secondary/50 transition-colors"
+    >
+      <Target className="h-5 w-5 text-muted-foreground" />
+      <span className="flex-1 text-left text-foreground">My Goals</span>
+      <span className="text-sm text-muted-foreground">{goals.length}</span>
+      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+    </button>
+  </CardContent>
+</Card>
 
         <Card>
           <CardContent className="p-0">

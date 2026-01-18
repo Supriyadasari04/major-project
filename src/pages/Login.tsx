@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { Sparkles, ArrowLeft } from 'lucide-react';
+import { isOnboardingComplete } from "@/lib/storage";
+
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -22,11 +24,13 @@ const Login = () => {
     try {
       const success = await login(email, password);
       if (success) {
+        const completed = await isOnboardingComplete();
         toast({
           title: 'Welcome back!',
           description: "Great to see you again. Let's continue your journey.",
         });
-        navigate('/home');
+        if (completed) navigate("/home");
+        else navigate("/onboarding");
       } else {
         toast({
           title: 'Login failed',

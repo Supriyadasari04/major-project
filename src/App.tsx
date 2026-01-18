@@ -83,6 +83,7 @@ import Habits from "./pages/Habits";
 import Reflect from "./pages/Reflect";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import Goals from "./pages/Goals";
 
 const queryClient = new QueryClient();
 
@@ -188,6 +189,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+
+<Route
+  path="/goals"
+  element={
+    <ProtectedRoute>
+      <Goals />
+    </ProtectedRoute>
+  }
+/>
 
       <Route path="*" element={<NotFound />} />
     </Routes>

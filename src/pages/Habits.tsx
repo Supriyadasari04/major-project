@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getHabits, addHabit, completeHabit, uncompleteHabit, deleteHabit, getTodayString, Habit } from '@/lib/storage';
+import { getHabits, addHabit, completeHabit, deleteHabit, getTodayString} from '@/lib/storage';
+import type { Habit } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
 import { Plus, CheckCircle2, Circle, Trash2, Target, MessageCircle, Sparkles, Moon, User } from 'lucide-react';
 
@@ -14,11 +15,22 @@ const Habits = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
   useEffect(() => {
   const load = async () => {
-    const dbHabits = await getHabits();
-    setHabits(dbHabits);
+    try {
+      const dbHabits = await getHabits();
+      setHabits(dbHabits);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Failed to load habits",
+        variant: "destructive",
+      });
+    }
   };
+
   load();
 }, []);
+
 
   const [isOpen, setIsOpen] = useState(false);
   const [newHabit, setNewHabit] = useState({ title: '', description: '', category: 'health' as const, frequency: 'daily' as const });
@@ -46,12 +58,14 @@ const Habits = () => {
 };
 
 
-  const handleToggle = async (id: string, isCompleted: boolean) => {
-  if (isCompleted) await uncompleteHabit(id);
-  else await completeHabit(id);
+const handleToggle = async (id: string, isCompleted: boolean) => {
+  // ✅ One-way completion: cannot uncomplete once done today
+  if (isCompleted) return;
 
+  await completeHabit(id);
   setHabits(await getHabits());
 };
+
 
 
   const handleDelete = async (id: string) => {
@@ -115,7 +129,12 @@ const Habits = () => {
               <Card key={habit.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <button onClick={() => handleToggle(habit.id, isCompleted)} className="flex-shrink-0">
+                    <button
+  onClick={() => handleToggle(habit.id, isCompleted)}
+  disabled={isCompleted}
+  className="flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+>
+
                       {isCompleted ? <CheckCircle2 className="h-6 w-6 text-primary" /> : <Circle className="h-6 w-6 text-muted-foreground" />}
                     </button>
                     <div className="flex-1 min-w-0">

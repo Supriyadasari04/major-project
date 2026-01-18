@@ -67,7 +67,9 @@ import {
   addJournalEntry,
   getJournalEntries,
   getAchievements,
-  unlockAchievement
+  unlockAchievement,
+  updateJournalEntry,
+  deleteJournalEntry,
 } from "../controllers/onboarding.controller";
 
 const router = Router();
@@ -101,9 +103,13 @@ router.get("/reflections/:userId", getReflections);
 // ✅ JOURNAL
 router.post("/journal", addJournalEntry);
 router.get("/journal/:userId", getJournalEntries);
+router.put("/journal/:journalId", updateJournalEntry);
+router.delete("/journal/:journalId", deleteJournalEntry);
+
 
 router.get("/achievements/:userId", getAchievements);
-router.patch("/achievements/:achievementId/unlock", unlockAchievement);
+router.patch("/achievements/:userId/:achievementId/unlock", unlockAchievement);
+
 
 router.post("/complete", setOnboardingComplete);
 router.get("/status/:userId", getOnboardingStatus);
