@@ -1,5 +1,4 @@
 ````md
-# Run Project
 
 ## Terminal 1
 ```bash
@@ -22,5 +21,4 @@ npm i
 npm run dev
 ```
 
-```
 ```
