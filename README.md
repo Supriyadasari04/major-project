@@ -1,4 +1,4 @@
-# AI-Powered Image Chatbot
+# Emotion Aware AI Powered Mental Healtch Coach for Personalized Support
 
 ## Quick Start
 
