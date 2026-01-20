@@ -157,7 +157,17 @@ Do not include any other text, just the JSON array.`;
       body: JSON.stringify(request),
     });
 
-    if (!response.ok) throw new Error('Failed to generate tasks');
+    if (!response.ok) {
+  const errorText = await response.text();
+  console.error("Gemini tasks API error:", errorText);
+
+  return [
+    { title: "Start your day with intention", priority: "high" as const },
+    { title: "Review your goals", priority: "medium" as const },
+    { title: "Complete one habit", priority: "medium" as const },
+  ];
+}
+
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';

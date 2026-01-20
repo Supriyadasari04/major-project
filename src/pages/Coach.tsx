@@ -38,7 +38,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +57,7 @@ import {
   setActiveChatSessionId,
   getChatMessagesBySession,
   addMessageToSession,
+  analyzeEmotion,
 } from "@/lib/storage";
 
 import { sendMessage } from "@/lib/gemini";
@@ -66,7 +67,6 @@ import {
   Send,
   Mic,
   MicOff,
-  Moon,
   Target,
   MessageCircle,
   Sparkles,
@@ -79,13 +79,31 @@ import {
   Pencil,
   Trash2,
   X,
+  Brain,
 } from "lucide-react";
+
+type LocalEmotionState = {
+  label: string;
+  scores?: Record<string, number>;
+};
+
+const EXERCISES: Record<string, string> = {
+  Joy: "🌞 Take 30 seconds and write 1 thing you’re proud of today.",
+  Sadness: "📝 Write 3 things you’re grateful for, even small ones.",
+  Anger: "❄️ Try the 5-4-3-2-1 grounding technique to calm your nervous system.",
+  Fear: "🌬️ Try 4-7-8 breathing: inhale 4s, hold 7s, exhale 8s (3 rounds).",
+  Disgust: "🧘 Try a 60-second mindful body scan from head to toe.",
+  Surprise: "🎯 Take a pause and name what changed unexpectedly.",
+  Neutral: "🧠 Do a quick check-in: “What do I need right now?”",
+};
 
 const Coach = () => {
   const { user } = useAuth();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
+    null
+  );
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -101,6 +119,9 @@ const Coach = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  const [analysis, setAnalysis] = useState<LocalEmotionState | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -108,29 +129,28 @@ const Coach = () => {
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
     [sessions, activeSessionId]
   );
-useEffect(() => {
-  const load = async () => {
-    try {
-      const dbSessions = await getChatSessions();
-      setSessions(dbSessions);
 
-      const storedActive = getActiveChatSessionId();
-      const nextActive = null;
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const dbSessions = await getChatSessions();
+        setSessions(dbSessions);
 
-      setActiveChatSessionId(nextActive);
-      setActiveSessionIdState(nextActive);
-      setMessages([]);
-    } catch (error) {
-      console.error(error);
-      setSessions([]);
-      setActiveChatSessionId(null);
-      setActiveSessionIdState(null);
-      setMessages([]);
-    }
-  };
+        const nextActive = null;
+        setActiveChatSessionId(nextActive);
+        setActiveSessionIdState(nextActive);
+        setMessages([]);
+      } catch (error) {
+        console.error(error);
+        setSessions([]);
+        setActiveChatSessionId(null);
+        setActiveSessionIdState(null);
+        setMessages([]);
+      }
+    };
 
-  load();
-}, []);
+    load();
+  }, []);
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -138,8 +158,8 @@ useEffect(() => {
         setMessages([]);
         return;
       }
-        const dbMessages = await getChatMessagesBySession(activeSessionId);
-        setMessages(dbMessages);
+      const dbMessages = await getChatMessagesBySession(activeSessionId);
+      setMessages(dbMessages);
     };
     loadMessages();
   }, [activeSessionId]);
@@ -151,7 +171,8 @@ useEffect(() => {
   useEffect(() => {
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
       const SpeechRecognition =
-        (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+        (window as any).webkitSpeechRecognition ||
+        (window as any).SpeechRecognition;
 
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
@@ -181,6 +202,7 @@ useEffect(() => {
       setActiveChatSessionId(newSession.id);
       setActiveSessionIdState(newSession.id);
       setMessages([]);
+      setAnalysis(null);
 
       setIsSidebarOpen(false);
     } catch (error) {
@@ -200,6 +222,8 @@ useEffect(() => {
 
       const dbMessages = await getChatMessagesBySession(id);
       setMessages(dbMessages);
+
+      setAnalysis(null);
       setIsSidebarOpen(false);
     } catch (error) {
       console.error(error);
@@ -275,6 +299,8 @@ useEffect(() => {
       } else {
         setMessages([]);
       }
+
+      setAnalysis(null);
     } catch (error) {
       console.error(error);
       toast({
@@ -285,6 +311,34 @@ useEffect(() => {
     } finally {
       setIsDeleteOpen(false);
       setDeleteSessionId(null);
+    }
+  };
+
+  const handleAnalyzeEmotion = async () => {
+    if (!input.trim() || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    try {
+      const saved = await analyzeEmotion(input.trim(), "coach");
+
+      setAnalysis({
+        label: saved.emotionLabel ?? "Neutral",
+        scores: saved.emotionScores ?? {},
+      });
+
+      toast({
+        title: "Emotion analyzed",
+        description: `Detected: ${saved.emotionLabel ?? "Neutral"}`,
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze emotion",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -305,6 +359,7 @@ useEffect(() => {
         setActiveSessionIdState(sid);
         setMessages([]);
       }
+
       const userMsg = await addMessageToSession(sid, {
         role: "user",
         content: input.trim(),
@@ -313,8 +368,14 @@ useEffect(() => {
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
 
+      // ✅ AUTO mood tracking for EVERY user message (non-blocking)
+      analyzeEmotion(userMsg.content, "coach").catch((e) =>
+        console.error("Auto emotion analyze failed:", e)
+      );
+
       const goals = await getGoals();
       const habits = await getHabits();
+
       const response = await sendMessage(
         userMsg.content,
         [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
@@ -340,6 +401,7 @@ useEffect(() => {
           "Looks like the AI service hit its usage limit (quota/rate limit). Try again later.",
         variant: "destructive",
       });
+
       try {
         const sid = activeSessionId;
         if (sid) {
@@ -365,7 +427,6 @@ useEffect(() => {
       <header className="container mx-auto px-4 py-4 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            {/* ✅ header button opens left drawer */}
             <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Open chats">
@@ -391,7 +452,6 @@ useEffect(() => {
                         <Plus className="h-5 w-5" />
                       </Button>
 
-                      {/* ✅ Your own close button */}
                       <SheetClose asChild>
                         <Button
                           variant="ghost"
@@ -416,10 +476,17 @@ useEffect(() => {
                       const isActive = s.id === activeSessionId;
 
                       return (
-                        <button
+                        <div
                           key={s.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => handleSelectSession(s.id)}
-                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              handleSelectSession(s.id);
+                            }
+                          }}
+                          className={`w-full rounded-xl border px-3 py-3 text-left transition cursor-pointer ${
                             isActive
                               ? "border-primary bg-primary/5"
                               : "border-border hover:bg-secondary/50"
@@ -438,14 +505,16 @@ useEffect(() => {
 
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
+                                <div
+                                  role="button"
+                                  tabIndex={0}
                                   onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
                                   aria-label="Chat options"
+                                  className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-secondary transition"
                                 >
                                   <MoreVertical className="h-4 w-4" />
-                                </Button>
+                                </div>
                               </DropdownMenuTrigger>
 
                               <DropdownMenuContent align="end">
@@ -492,7 +561,7 @@ useEffect(() => {
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
-                        </button>
+                        </div>
                       );
                     })
                   )}
@@ -526,7 +595,7 @@ useEffect(() => {
       </header>
 
       {/* MAIN CHAT */}
-      <main className="flex-1 container mx-auto px-4 py-4 overflow-y-auto pb-28">
+      <main className="flex-1 container mx-auto px-4 py-4 overflow-y-auto pb-36">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <div className="h-16 w-16 rounded-2xl gradient-hero flex items-center justify-center mb-4">
@@ -536,7 +605,8 @@ useEffect(() => {
               Hi {user?.name?.split(" ")[0]}!
             </h2>
             <p className="text-muted-foreground max-w-sm">
-              Start a new chat from the menu, or just type below and I’ll create one automatically.
+              Start a new chat from the menu, or just type below and I’ll create
+              one automatically.
             </p>
           </div>
         ) : (
@@ -544,7 +614,9 @@ useEffect(() => {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${
+                  msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
               >
                 <Card
                   className={`max-w-[85%] p-3 ${
@@ -571,6 +643,34 @@ useEffect(() => {
         )}
       </main>
 
+      {/* ANALYSIS RESULT (only when user clicks Analyze Emotion) */}
+      {analysis ? (
+        <div className="fixed bottom-28 left-0 right-0">
+          <div className="container mx-auto px-4">
+            <Card className="p-3 bg-card border border-border shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Emotion detected:{" "}
+                    <span className="text-primary">{analysis.label}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {EXERCISES[analysis.label] ?? EXERCISES.Neutral}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAnalysis(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      ) : null}
+
       {/* INPUT BAR */}
       <div className="fixed bottom-16 left-0 right-0 bg-card border-t border-border p-4">
         <div className="container mx-auto flex gap-2">
@@ -580,7 +680,11 @@ useEffect(() => {
             onClick={toggleVoice}
             aria-label="Voice input"
           >
-            {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            {isListening ? (
+              <MicOff className="h-5 w-5" />
+            ) : (
+              <Mic className="h-5 w-5" />
+            )}
           </Button>
 
           <Input
@@ -590,6 +694,20 @@ useEffect(() => {
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             className="flex-1"
           />
+
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleAnalyzeEmotion}
+            disabled={!input.trim() || isAnalyzing}
+            aria-label="Analyze emotion"
+          >
+            {isAnalyzing ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Brain className="h-5 w-5" />
+            )}
+          </Button>
 
           <Button
             variant="hero"
@@ -632,7 +750,7 @@ useEffect(() => {
               to="/reflect"
               className="flex flex-col items-center text-muted-foreground hover:text-primary"
             >
-              <Moon className="h-5 w-5" />
+              <Sparkles className="h-5 w-5" />
               <span className="text-xs mt-1">Reflect</span>
             </Link>
 
@@ -647,16 +765,15 @@ useEffect(() => {
         </div>
       </nav>
 
-      {/* ✅ RENAME DIALOG */}
+      {/* RENAME DIALOG */}
       <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
         <DialogContent>
           <DialogHeader>
-  <DialogTitle>Rename chat</DialogTitle>
-  <DialogDescription className="text-sm text-muted-foreground">
-    Give this chat a short title so you can find it later.
-  </DialogDescription>
-</DialogHeader>
-
+            <DialogTitle>Rename chat</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Give this chat a short title so you can find it later.
+            </DialogDescription>
+          </DialogHeader>
 
           <Input
             value={renameText}
@@ -675,17 +792,22 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ DELETE CONFIRMATION */}
+      {/* DELETE CONFIRMATION */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

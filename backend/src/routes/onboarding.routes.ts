@@ -25,6 +25,9 @@ import {
   unlockAchievement,
   updateJournalEntry,
   deleteJournalEntry,
+  addMoodLog,
+  getMoodLogs,
+  getMoodLogsByMonth
 } from "../controllers/onboarding.controller";
 
 const router = Router();
@@ -60,7 +63,10 @@ router.delete("/journal/:journalId", deleteJournalEntry);
 router.get("/achievements/:userId", getAchievements);
 router.patch("/achievements/:userId/:achievementId/unlock", unlockAchievement);
 
-
+// ✅ MOODS ✅ NEW
+router.post("/moods", addMoodLog);
+router.get("/moods/:userId", getMoodLogs);
+router.get("/mood/:userId/month", getMoodLogsByMonth);
 router.post("/complete", setOnboardingComplete);
 router.get("/status/:userId", getOnboardingStatus);
 

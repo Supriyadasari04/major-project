@@ -114,31 +114,36 @@ const Profile = () => {
     }
   };
 
-  const handlePrivacyChange = async (privacyKey: keyof Settings["privacy"], value: boolean) => {
-    if (!settings) return;
+const handlePrivacyChange = async (
+  privacyKey: keyof Settings["privacy"],
+  value: boolean
+) => {
+  if (!settings) return;
 
-    const updated = {
-      ...settings,
-      privacy: {
-        ...settings.privacy,
-        [privacyKey]: value,
-      },
-    };
-
-    setSettingsState(updated);
-
-    try {
-      await saveSettings(updated);
-      toast({ title: "Privacy updated" });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description: "Failed to update privacy",
-        variant: "destructive",
-      });
-    }
+  const updated: Settings = {
+    ...settings,
+    privacy: {
+      shareAnalytics: settings?.privacy?.shareAnalytics ?? false,
+      showStreak: settings?.privacy?.showStreak ?? true,
+      [privacyKey]: value,
+    },
   };
+
+  setSettingsState(updated);
+
+  try {
+    await saveSettings(updated);
+    toast({ title: "Privacy updated" });
+  } catch (error) {
+    console.error(error);
+    toast({
+      title: "Error",
+      description: "Failed to update privacy",
+      variant: "destructive",
+    });
+  }
+};
+
 
   const menuItems = [
     {
@@ -360,28 +365,29 @@ const Profile = () => {
                     )}
 
                     {item.id === "privacy" && (
-                      <div className="space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                          Your data is stored securely in the database.
-                        </p>
+  <div className="space-y-3">
+    <p className="text-sm text-muted-foreground">
+      Your data is stored securely in the database.
+    </p>
 
-                        <div className="flex items-center justify-between">
-                          <Label>Show Streak Badge</Label>
-                          <Switch
-                            checked={settings.privacy.showStreak}
-                            onCheckedChange={(v) => handlePrivacyChange("showStreak", v)}
-                          />
-                        </div>
+    <div className="flex items-center justify-between">
+      <Label>Show Streak Badge</Label>
+      <Switch
+        checked={settings?.privacy?.showStreak ?? true}
+        onCheckedChange={(v) => handlePrivacyChange("showStreak", v)}
+      />
+    </div>
 
-                        <div className="flex items-center justify-between">
-                          <Label>Share Analytics</Label>
-                          <Switch
-                            checked={settings.privacy.shareAnalytics}
-                            onCheckedChange={(v) => handlePrivacyChange("shareAnalytics", v)}
-                          />
-                        </div>
-                      </div>
-                    )}
+    <div className="flex items-center justify-between">
+      <Label>Share Analytics</Label>
+      <Switch
+        checked={settings?.privacy?.shareAnalytics ?? false}
+        onCheckedChange={(v) => handlePrivacyChange("shareAnalytics", v)}
+      />
+    </div>
+  </div>
+)}
+
 
                     {item.id === "help" && (
                       <div className="space-y-3">
