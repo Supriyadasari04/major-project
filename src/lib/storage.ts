@@ -117,7 +117,13 @@ export interface Settings {
     showStreak: boolean;
   };
   morningPrepCount?: number;
+
+  // ✅ NEW (persisted)
+  emotionTrackingEnabled?: boolean;
+  emotionTrackingDisabledAt?: string | null;
+  emotionTrackingLastReminderAt?: string | null;
 }
+
 
 export interface EmotionDetectionResult {
   emotionLabel: string;
@@ -942,8 +948,27 @@ export const getSettings = async (): Promise<Settings> => {
   const res = await fetch(`${ONBOARDING_API}/settings/${user.id}`);
   if (!res.ok) throw new Error("Failed to fetch settings");
 
-  return await res.json();
+  const data = await res.json();
+
+  // ✅ Ensure frontend always has a valid object
+  return {
+    notifications: data.notifications ?? true,
+    morningPrepTime: data.morningPrepTime ?? "07:00",
+    eveningReflectionTime: data.eveningReflectionTime ?? "21:00",
+    theme: data.theme ?? "light",
+    privacy: {
+      shareAnalytics: data.privacy?.shareAnalytics ?? false,
+      showStreak: data.privacy?.showStreak ?? true,
+    },
+    morningPrepCount: data.morningPrepCount ?? 0,
+
+    // ✅ NEW
+    emotionTrackingEnabled: data.emotionTrackingEnabled ?? true,
+    emotionTrackingDisabledAt: data.emotionTrackingDisabledAt ?? null,
+    emotionTrackingLastReminderAt: data.emotionTrackingLastReminderAt ?? null,
+  };
 };
+
 
 export const saveSettings = async (settings: Settings): Promise<void> => {
   const user = getUser();

@@ -3,13 +3,17 @@ import { v4 as uuid } from "uuid";
 
 export const addGoal = async (req: any, res: any) => {
   try {
-    const { userId, title, description, category, targetDate } = req.body;
+    const { userId, title, description, category } = req.body;
+
+    if (!userId || !title || !category) {
+      return res.status(400).json({ message: "userId, title, category are required" });
+    }
 
     const result = await pool.query(
-      `INSERT INTO goals (id, user_id, title, description, category, target_date, progress, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO goals (id, user_id, title, description, category, progress, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
-      [uuid(), userId, title, description, category, targetDate ?? null, 0, new Date()]
+      [uuid(), userId, title, description ?? null, category, 0, new Date()]
     );
 
     res.json(result.rows[0]);
@@ -18,6 +22,7 @@ export const addGoal = async (req: any, res: any) => {
     res.status(500).json({ message: "Failed to add goal" });
   }
 };
+
 
 export const getGoals = async (req: any, res: any) => {
   try {
@@ -299,10 +304,47 @@ export const getSettings = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
 
-    const result = await pool.query("SELECT * FROM settings WHERE user_id = $1 LIMIT 1", [userId]);
-    if (result.rowCount === 0) return res.json({});
+    const result = await pool.query(
+      "SELECT * FROM settings WHERE user_id = $1 LIMIT 1",
+      [userId]
+    );
 
-    res.json(result.rows[0]);
+    if (result.rowCount === 0) {
+      // Return frontend-compatible default object
+      return res.json({
+        notifications: true,
+        morningPrepTime: "07:00",
+        eveningReflectionTime: "21:00",
+        theme: "light",
+        privacy: { shareAnalytics: false, showStreak: true },
+        morningPrepCount: 0,
+
+        // ✅ New defaults
+        emotionTrackingEnabled: true,
+        emotionTrackingDisabledAt: null,
+        emotionTrackingLastReminderAt: null,
+      });
+    }
+
+    const row = result.rows[0];
+
+    // ✅ Convert DB row -> frontend shape
+    return res.json({
+      notifications: row.notifications ?? true,
+      morningPrepTime: row.morning_prep_time ?? "07:00",
+      eveningReflectionTime: row.evening_reflection_time ?? "21:00",
+      theme: row.theme ?? "light",
+      privacy: {
+        shareAnalytics: row.share_analytics ?? false,
+        showStreak: row.show_streak ?? true,
+      },
+      morningPrepCount: row.morning_prep_count ?? 0,
+
+      // ✅ New fields
+      emotionTrackingEnabled: row.emotion_tracking_enabled ?? true,
+      emotionTrackingDisabledAt: row.emotion_tracking_disabled_at ?? null,
+      emotionTrackingLastReminderAt: row.emotion_tracking_last_reminder_at ?? null,
+    });
   } catch (error: any) {
     console.error("GET SETTINGS ERROR:", error.message);
     res.status(500).json({ message: "Failed to fetch settings" });
@@ -310,16 +352,41 @@ export const getSettings = async (req: any, res: any) => {
 };
 
 
+
 export const updateSettings = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
     const s = req.body;
 
-    // Simplified upsert style
+    const enabled =
+      s.emotionTrackingEnabled === undefined ? true : Boolean(s.emotionTrackingEnabled);
+
+    const disabledAt = s.emotionTrackingDisabledAt ?? null;
+    const lastReminderAt = s.emotionTrackingLastReminderAt ?? null;
+
     const result = await pool.query(
       `
-      INSERT INTO settings (id, user_id, notifications, morning_prep_time, evening_reflection_time, theme, share_analytics, show_streak, created_at, updated_at, morning_prep_count)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      INSERT INTO settings (
+        id,
+        user_id,
+        notifications,
+        morning_prep_time,
+        evening_reflection_time,
+        theme,
+        share_analytics,
+        show_streak,
+        created_at,
+        updated_at,
+        morning_prep_count,
+
+        emotion_tracking_enabled,
+        emotion_tracking_disabled_at,
+        emotion_tracking_last_reminder_at
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+        $12,$13,$14
+      )
       ON CONFLICT (user_id)
       DO UPDATE SET
         notifications = EXCLUDED.notifications,
@@ -329,7 +396,11 @@ export const updateSettings = async (req: any, res: any) => {
         share_analytics = EXCLUDED.share_analytics,
         show_streak = EXCLUDED.show_streak,
         updated_at = EXCLUDED.updated_at,
-        morning_prep_count = EXCLUDED.morning_prep_count
+        morning_prep_count = EXCLUDED.morning_prep_count,
+
+        emotion_tracking_enabled = EXCLUDED.emotion_tracking_enabled,
+        emotion_tracking_disabled_at = EXCLUDED.emotion_tracking_disabled_at,
+        emotion_tracking_last_reminder_at = EXCLUDED.emotion_tracking_last_reminder_at
       RETURNING *;
       `,
       [
@@ -344,15 +415,37 @@ export const updateSettings = async (req: any, res: any) => {
         new Date(),
         new Date(),
         s.morningPrepCount ?? 0,
+
+        enabled,
+        disabledAt,
+        lastReminderAt,
       ]
     );
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+
+    // ✅ Return frontend-compatible shape
+    res.json({
+      notifications: row.notifications ?? true,
+      morningPrepTime: row.morning_prep_time ?? "07:00",
+      eveningReflectionTime: row.evening_reflection_time ?? "21:00",
+      theme: row.theme ?? "light",
+      privacy: {
+        shareAnalytics: row.share_analytics ?? false,
+        showStreak: row.show_streak ?? true,
+      },
+      morningPrepCount: row.morning_prep_count ?? 0,
+
+      emotionTrackingEnabled: row.emotion_tracking_enabled ?? true,
+      emotionTrackingDisabledAt: row.emotion_tracking_disabled_at ?? null,
+      emotionTrackingLastReminderAt: row.emotion_tracking_last_reminder_at ?? null,
+    });
   } catch (error: any) {
     console.error("UPDATE SETTINGS ERROR:", error.message);
     res.status(500).json({ message: "Failed to update settings" });
   }
 };
+
 
 
 import { pool } from "../config/db";

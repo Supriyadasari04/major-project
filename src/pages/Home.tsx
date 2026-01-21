@@ -11,7 +11,7 @@ import {
   toggleTask,
   getTodayString,
   addTask,
-  recordMorningPrepAndUnlockAchievement
+  recordMorningPrepAndUnlockAchievement,
 } from "@/lib/storage";
 import { generateMorningTasks } from "@/lib/gemini";
 import type { Habit, Goal, Task } from "@/lib/storage";
@@ -31,6 +31,28 @@ import {
 } from "lucide-react";
 
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
+
+const getStreakMotivation = (streak: number) => {
+  if (streak === 3) {
+    return {
+      title: "🔥 Nice streak!",
+      description: "3 days in a row — you're building momentum!",
+    };
+  }
+  if (streak === 6) {
+    return {
+      title: "💪 Almost there!",
+      description: "1 more day to unlock the 7-day streak achievement!",
+    };
+  }
+  if (streak === 29) {
+    return {
+      title: "⭐ So close!",
+      description: "Just 1 more day to unlock the 30-day streak achievement!",
+    };
+  }
+  return null;
+};
 
 const Home = () => {
   const { user } = useAuth();
@@ -77,8 +99,7 @@ const Home = () => {
     loadData();
   }, [user, navigate, today]);
 
-  const completedHabits = habits.filter((h) => h.completedDates.includes(today))
-    .length;
+  const completedHabits = habits.filter((h) => h.completedDates.includes(today)).length;
   const completedTasks = tasks.filter((t) => t.completed).length;
 
   const habitsPercent =
@@ -87,13 +108,26 @@ const Home = () => {
   const tasksPercent =
     tasks.length === 0 ? 0 : Math.round((completedTasks / tasks.length) * 100);
 
-const handleHabitToggle = async (id: string, isCompleted: boolean) => {
-  if (isCompleted) return;
+  const handleHabitToggle = async (id: string, isCompleted: boolean) => {
+    if (isCompleted) return;
 
-  await completeHabit(id);
-  setHabits(await getHabits());
-};
+    await completeHabit(id);
 
+    const updated = await getHabits();
+    setHabits(updated);
+
+    // ✅ Find this updated habit and show pre-achievement encouragement
+    const h = updated.find((x) => x.id === id);
+    if (h) {
+      const msg = getStreakMotivation(h.streak ?? 0);
+      if (msg) {
+        toast({
+          title: msg.title,
+          description: msg.description,
+        });
+      }
+    }
+  };
 
   const handleTaskToggle = async (id: string) => {
     await toggleTask(id);
@@ -118,6 +152,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
           priority: task.priority,
         });
       }
+
       await recordMorningPrepAndUnlockAchievement();
       setTasks(await getTasks(today));
 
@@ -226,9 +261,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
                     style={{ width: `${clampPercent(habitsPercent)}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {habitsPercent}% completed
-                </p>
+                <p className="text-xs text-muted-foreground mt-2">{habitsPercent}% completed</p>
               </div>
             </CardContent>
           </Card>
@@ -254,9 +287,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
                     style={{ width: `${clampPercent(tasksPercent)}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {tasksPercent}% completed
-                </p>
+                <p className="text-xs text-muted-foreground mt-2">{tasksPercent}% completed</p>
               </div>
             </CardContent>
           </Card>
@@ -278,9 +309,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
             <CardContent className="space-y-2">
               {goals.length === 0 ? (
                 <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    No goals found yet.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No goals found yet.</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Complete onboarding to set your first goals.
                   </p>
@@ -295,21 +324,19 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
                       <div className="min-w-0">
                         <p className="font-medium text-foreground truncate">{g.title}</p>
 
-{g.description ? (
-  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-    {g.description}
-  </p>
-) : (
-  <p className="text-xs text-muted-foreground mt-1">
-    No description added
-  </p>
-)}
+                        {g.description ? (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {g.description}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-1">No description added</p>
+                        )}
 
-<p className="text-[11px] text-muted-foreground mt-2 capitalize">
-  Category: {g.category}
-</p>
-
+                        <p className="text-[11px] text-muted-foreground mt-2 capitalize">
+                          Category: {g.category}
+                        </p>
                       </div>
+
                       <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
                         {typeof g.progress === "number" ? `${g.progress}%` : "0%"}
                       </span>
@@ -319,9 +346,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
                       <div
                         className="h-full rounded-full bg-primary transition-all"
                         style={{
-                          width: `${clampPercent(
-                            typeof g.progress === "number" ? g.progress : 0
-                          )}%`,
+                          width: `${clampPercent(typeof g.progress === "number" ? g.progress : 0)}%`,
                         }}
                       />
                     </div>
@@ -345,9 +370,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
             <CardContent className="space-y-2">
               {habits.length === 0 ? (
                 <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    No habits yet.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No habits yet.</p>
                   <Button variant="soft" size="sm" asChild className="mt-3">
                     <Link to="/habits">Add your first habit</Link>
                   </Button>
@@ -374,9 +397,7 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
 
                       <span
                         className={`text-sm ${
-                          isCompleted
-                            ? "line-through text-muted-foreground"
-                            : "text-foreground"
+                          isCompleted ? "line-through text-muted-foreground" : "text-foreground"
                         }`}
                       >
                         {habit.title}
@@ -401,18 +422,14 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
             <CardTitle className="text-lg">Today's Tasks</CardTitle>
 
             {tasks.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                Tap to mark complete
-              </span>
+              <span className="text-xs text-muted-foreground">Tap to mark complete</span>
             )}
           </CardHeader>
 
           <CardContent className="space-y-2">
             {tasks.length === 0 ? (
               <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-2">
-                  No tasks for today
-                </p>
+                <p className="text-sm text-muted-foreground mb-2">No tasks for today</p>
                 <Button
                   variant="hero"
                   size="sm"
@@ -455,17 +472,13 @@ const handleHabitToggle = async (id: string, isCompleted: boolean) => {
 
                   <span
                     className={`text-sm ${
-                      task.completed
-                        ? "line-through text-muted-foreground"
-                        : "text-foreground"
+                      task.completed ? "line-through text-muted-foreground" : "text-foreground"
                     }`}
                   >
                     {task.title}
                   </span>
 
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {task.priority}
-                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">{task.priority}</span>
                 </button>
               ))
             )}

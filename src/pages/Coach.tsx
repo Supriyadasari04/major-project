@@ -82,28 +82,17 @@ import {
   Brain,
 } from "lucide-react";
 
-type LocalEmotionState = {
-  label: string;
-  scores?: Record<string, number>;
-};
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
-const EXERCISES: Record<string, string> = {
-  Joy: "🌞 Take 30 seconds and write 1 thing you’re proud of today.",
-  Sadness: "📝 Write 3 things you’re grateful for, even small ones.",
-  Anger: "❄️ Try the 5-4-3-2-1 grounding technique to calm your nervous system.",
-  Fear: "🌬️ Try 4-7-8 breathing: inhale 4s, hold 7s, exhale 8s (3 rounds).",
-  Disgust: "🧘 Try a 60-second mindful body scan from head to toe.",
-  Surprise: "🎯 Take a pause and name what changed unexpectedly.",
-  Neutral: "🧠 Do a quick check-in: “What do I need right now?”",
-};
+import { getSettings, saveSettings } from "@/lib/storage";
+
 
 const Coach = () => {
   const { user } = useAuth();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
-    null
-  );
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -119,7 +108,6 @@ const Coach = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const [analysis, setAnalysis] = useState<LocalEmotionState | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -171,8 +159,7 @@ const Coach = () => {
   useEffect(() => {
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
       const SpeechRecognition =
-        (window as any).webkitSpeechRecognition ||
-        (window as any).SpeechRecognition;
+        (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
 
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
@@ -189,10 +176,31 @@ const Coach = () => {
     }
   }, []);
 
+  const [emotionTrackingEnabled, setEmotionTrackingEnabled] = useState(true);
+const [settingsLoaded, setSettingsLoaded] = useState(false);
+const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+
+
   const refreshSessions = async () => {
     const dbSessions = await getChatSessions();
     setSessions(dbSessions);
   };
+
+  useEffect(() => {
+  const loadEmotionTracking = async () => {
+    try {
+      const s = await getSettings();
+      setEmotionTrackingEnabled(s.emotionTrackingEnabled ?? true);
+    } catch (e) {
+      console.error("Failed to load settings for emotion tracking:", e);
+      setEmotionTrackingEnabled(true); // fallback default ON
+    } finally {
+      setSettingsLoaded(true);
+    }
+  };
+
+  loadEmotionTracking();
+}, []);
 
   const handleCreateNewChat = async () => {
     try {
@@ -202,7 +210,6 @@ const Coach = () => {
       setActiveChatSessionId(newSession.id);
       setActiveSessionIdState(newSession.id);
       setMessages([]);
-      setAnalysis(null);
 
       setIsSidebarOpen(false);
     } catch (error) {
@@ -223,7 +230,6 @@ const Coach = () => {
       const dbMessages = await getChatMessagesBySession(id);
       setMessages(dbMessages);
 
-      setAnalysis(null);
       setIsSidebarOpen(false);
     } catch (error) {
       console.error(error);
@@ -299,8 +305,6 @@ const Coach = () => {
       } else {
         setMessages([]);
       }
-
-      setAnalysis(null);
     } catch (error) {
       console.error(error);
       toast({
@@ -320,11 +324,6 @@ const Coach = () => {
     setIsAnalyzing(true);
     try {
       const saved = await analyzeEmotion(input.trim(), "coach");
-
-      setAnalysis({
-        label: saved.emotionLabel ?? "Neutral",
-        scores: saved.emotionScores ?? {},
-      });
 
       toast({
         title: "Emotion analyzed",
@@ -369,9 +368,12 @@ const Coach = () => {
       setInput("");
 
       // ✅ AUTO mood tracking for EVERY user message (non-blocking)
-      analyzeEmotion(userMsg.content, "coach").catch((e) =>
-        console.error("Auto emotion analyze failed:", e)
-      );
+      if (emotionTrackingEnabled) {
+  analyzeEmotion(userMsg.content, "coach").catch((e) =>
+    console.error("Auto emotion analyze failed:", e)
+  );
+}
+
 
       const goals = await getGoals();
       const habits = await getHabits();
@@ -421,6 +423,163 @@ const Coach = () => {
     }
   };
 
+
+  const getReminderSlot = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "night";
+};
+
+const shouldShowReminderNow = (lastReminderAt: string | null) => {
+  if (!lastReminderAt) return true;
+
+  const last = new Date(lastReminderAt).getTime();
+  const now = Date.now();
+
+  // Minimum gap between reminders: 4 hours
+  const minGapMs = 4 * 60 * 60 * 1000;
+  return now - last >= minGapMs;
+};
+
+
+useEffect(() => {
+  const checkReminder = async () => {
+    if (!settingsLoaded) return;
+
+    if (emotionTrackingEnabled) {
+      setReminderMessage(null);
+      return;
+    }
+
+    try {
+      const s = await getSettings();
+
+      const disabledAt = s.emotionTrackingDisabledAt
+        ? new Date(s.emotionTrackingDisabledAt)
+        : null;
+
+      if (!disabledAt) return;
+
+      const daysOff =
+        (Date.now() - disabledAt.getTime()) / (1000 * 60 * 60 * 24);
+
+      if (daysOff <= 6) return;
+
+      // ✅ Show reminder immediately when opening Coach
+      if (!shouldShowReminderNow(s.emotionTrackingLastReminderAt ?? null)) return;
+
+      const slot = getReminderSlot();
+
+      const reminders: Record<string, string> = {
+        morning:
+          "🌅 Mood tracking is OFF. If you turn it ON, your Reflect page will build your mood insights automatically.",
+        afternoon:
+          "💡 Reminder: Mood tracking is still OFF. You can enable it anytime for mood graphs in Reflect.",
+        night:
+          "🌙 Mood tracking is OFF. Turn it ON if you'd like gentle emotion insights in your Reflect page.",
+      };
+
+      const msg = reminders[slot];
+      setReminderMessage(msg);
+
+      // ✅ Save last reminder time so it won't spam
+      await saveSettings({
+        ...s,
+        emotionTrackingLastReminderAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("Reminder check failed:", e);
+    }
+  };
+
+  checkReminder();
+}, [emotionTrackingEnabled, settingsLoaded]);
+
+useEffect(() => {
+  const checkReminder = async () => {
+    if (!settingsLoaded) return;
+
+    if (emotionTrackingEnabled) {
+      setReminderMessage(null);
+      return;
+    }
+
+    try {
+      const s = await getSettings();
+
+      const disabledAt = s.emotionTrackingDisabledAt
+        ? new Date(s.emotionTrackingDisabledAt)
+        : null;
+
+      if (!disabledAt) return;
+
+      const daysOff =
+        (Date.now() - disabledAt.getTime()) / (1000 * 60 * 60 * 24);
+
+      if (daysOff <= 6) return;
+
+      // ✅ Show reminder immediately when opening Coach
+      if (!shouldShowReminderNow(s.emotionTrackingLastReminderAt ?? null)) return;
+
+      const slot = getReminderSlot();
+
+      const reminders: Record<string, string> = {
+        morning:
+          "🌅 Mood tracking is OFF. If you turn it ON, your Reflect page will build your mood insights automatically.",
+        afternoon:
+          "💡 Reminder: Mood tracking is still OFF. You can enable it anytime for mood graphs in Reflect.",
+        night:
+          "🌙 Mood tracking is OFF. Turn it ON if you'd like gentle emotion insights in your Reflect page.",
+      };
+
+      const msg = reminders[slot];
+      setReminderMessage(msg);
+
+      // ✅ Save last reminder time so it won't spam
+      await saveSettings({
+        ...s,
+        emotionTrackingLastReminderAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("Reminder check failed:", e);
+    }
+  };
+
+  checkReminder();
+}, [emotionTrackingEnabled, settingsLoaded]);
+
+const handleEmotionTrackingToggle = async (enabled: boolean) => {
+  setEmotionTrackingEnabled(enabled);
+
+  try {
+    const s = await getSettings();
+
+    await saveSettings({
+      ...s,
+      emotionTrackingEnabled: enabled,
+      emotionTrackingDisabledAt: enabled ? null : new Date().toISOString(),
+      emotionTrackingLastReminderAt: s.emotionTrackingLastReminderAt ?? null,
+    });
+
+    toast({
+      title: enabled ? "Mood tracking enabled ✅" : "Mood tracking disabled 🔒",
+      description: enabled
+        ? "Your coach messages will contribute to your mood graph."
+        : "We won't auto-detect emotion from your coach messages.",
+    });
+
+    setReminderMessage(null);
+  } catch (e) {
+    console.error("Failed saving emotion tracking setting:", e);
+    toast({
+      title: "Error",
+      description: "Failed to update mood tracking setting",
+      variant: "destructive",
+    });
+  }
+};
+
   return (
     <div className="min-h-screen gradient-calm flex flex-col pb-20">
       {/* HEADER */}
@@ -434,7 +593,11 @@ const Coach = () => {
                 </Button>
               </SheetTrigger>
 
-              <SheetContent side="left" className="w-[320px] p-0 [&>button]:hidden">
+              {/* ✅ Make SheetContent a flex column and allow list scroll */}
+              <SheetContent
+                side="left"
+                className="w-[320px] p-0 [&>button]:hidden flex flex-col"
+              >
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center justify-between">
                     <SheetHeader className="p-0">
@@ -466,7 +629,8 @@ const Coach = () => {
                   </div>
                 </div>
 
-                <div className="p-3 space-y-2">
+                {/* ✅ Scrollable chat list */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
                   {sessions.length === 0 ? (
                     <div className="text-sm text-muted-foreground p-3">
                       No chats yet. Create one using the + button.
@@ -605,8 +769,7 @@ const Coach = () => {
               Hi {user?.name?.split(" ")[0]}!
             </h2>
             <p className="text-muted-foreground max-w-sm">
-              Start a new chat from the menu, or just type below and I’ll create
-              one automatically.
+              Start a new chat from the menu, or just type below and I’ll create one automatically.
             </p>
           </div>
         ) : (
@@ -614,9 +777,7 @@ const Coach = () => {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex ${
-                  msg.role === "user" ? "justify-end" : "justify-start"
-                }`}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <Card
                   className={`max-w-[85%] p-3 ${
@@ -643,48 +804,44 @@ const Coach = () => {
         )}
       </main>
 
-      {/* ANALYSIS RESULT (only when user clicks Analyze Emotion) */}
-      {analysis ? (
-        <div className="fixed bottom-28 left-0 right-0">
-          <div className="container mx-auto px-4">
-            <Card className="p-3 bg-card border border-border shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Emotion detected:{" "}
-                    <span className="text-primary">{analysis.label}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {EXERCISES[analysis.label] ?? EXERCISES.Neutral}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setAnalysis(null)}
-                >
-                  Close
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </div>
-      ) : null}
+      {/* ✅ REMOVED ANALYSIS SUMMARY BLOCK COMPLETELY */}
 
-      {/* INPUT BAR */}
       <div className="fixed bottom-16 left-0 right-0 bg-card border-t border-border p-4">
-        <div className="container mx-auto flex gap-2">
+  <div className="container mx-auto space-y-3">
+    
+    {/* ✅ Reminder banner */}
+    {reminderMessage ? (
+      <Card className="p-3 bg-secondary/40 border border-border">
+        <p className="text-sm text-foreground">{reminderMessage}</p>
+      </Card>
+    ) : null}
+
+    {/* ✅ Mood Tracking Toggle */}
+    <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2 bg-card">
+      <div>
+        <Label className="text-sm">Auto Mood Tracking</Label>
+        <p className="text-xs text-muted-foreground">
+          Save emotions automatically for your Reflect mood graph
+        </p>
+      </div>
+
+      <Switch
+        checked={emotionTrackingEnabled}
+        onCheckedChange={handleEmotionTrackingToggle}
+        aria-label="Toggle auto mood tracking"
+      />
+    </div>
+
+    {/* ✅ Input Row */}
+    <div className="flex gap-2">
+
           <Button
             variant={isListening ? "destructive" : "outline"}
             size="icon"
             onClick={toggleVoice}
             aria-label="Voice input"
           >
-            {isListening ? (
-              <MicOff className="h-5 w-5" />
-            ) : (
-              <Mic className="h-5 w-5" />
-            )}
+            {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </Button>
 
           <Input
@@ -720,7 +877,7 @@ const Coach = () => {
           </Button>
         </div>
       </div>
-
+</div>
       {/* BOTTOM NAV */}
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border">
         <div className="container mx-auto px-4">
@@ -797,17 +954,12 @@ const Coach = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive"
-            >
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
