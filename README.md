@@ -21,6 +21,18 @@
    ```bash
    cd backend
    npm i
+   npm install --save-dev ts-node-dev
+   npm install express
+   npm install --save-dev @types/express
+   npm install cors
+   npm install dotenv
+   npm install --save-dev @types/cors
+   npm install pg
+   npm install --save-dev @types/pg
+   npm install bcrypt
+   npm install --save-dev @types/bcrypt
+   npm install uuid
+   npm install --save-dev @types/uuid
    npm run dev
    ```
 
