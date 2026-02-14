@@ -29,3 +29,19 @@
    npm i
    npm run dev
    ```
+
+
+   
+   add ai buddy
+   add more cards during registeration
+   add choose your ai buddy gender and age
+   add user gender and age, previuos mental health experiences, include recent high moments
+   add connection between ai buddy and reflections
+   store everything in database
+   add current mental health coach ai cocah to current ai cocah - which help with mental health wellness practices also as usual tracks mood
+   change few achievements which are related to journals emotions
+   add more questions in journalling
+   add graph - year's pixels graph pinterest
+   add mental health gamified tricks
+   remove ai generated tasks in home page
+   
